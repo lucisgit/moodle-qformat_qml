@@ -188,17 +188,17 @@ class qformat_qml extends qformat_default {
         foreach ($xml_question->children() as $child) {
             // Get the ID of the first choice node
             if ($child->getName() == "ANSWER") {
-                if ($isMultipleAns) {
+                //if ($isMultipleAns) {
                     foreach ($child->children() as $ansChild) {
                         if ($ansChild->getName() == "CHOICE") {
-                            $qText .= '_';
+                            $qText .= ' _ ';
                         }
 
                         if ($ansChild->getName() == "CONTENT") {
                             $qText .= (string) $ansChild;
                         }
                     }
-                }
+                //}
             }
 
             // Loop the outcome nodes
@@ -259,7 +259,7 @@ class qformat_qml extends qformat_default {
         if ($isMultipleAns) {
             $qo->questiontext = addslashes(trim($qText)) . get_string('blankmultiquestionhint', 'qformat_qml');
         } else {
-            $qo->questiontext = addslashes(trim((string) $xml_question->ANSWER->CONTENT));
+            $qo->questiontext = addslashes(trim((string) $qText));
         }
     }
 
