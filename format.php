@@ -178,27 +178,21 @@ class qformat_qml extends qformat_default {
     private function import_fib($xml_question, &$qo, $isMultipleAns) {
 
         $qText = "";
-
         $acount = 0;
-        $ansCount = 0;
         $ansText = "";
-
-        //TODO - (check)Make it work with single answer fib
 
         foreach ($xml_question->children() as $child) {
             // Get the ID of the first choice node
             if ($child->getName() == "ANSWER") {
-                //if ($isMultipleAns) {
-                    foreach ($child->children() as $ansChild) {
-                        if ($ansChild->getName() == "CHOICE") {
-                            $qText .= ' _ ';
-                        }
-
-                        if ($ansChild->getName() == "CONTENT") {
-                            $qText .= (string) $ansChild;
-                        }
+                foreach ($child->children() as $ansChild) {
+                    if ($ansChild->getName() == "CHOICE") {
+                        $qText .= ' _ ';
                     }
-                //}
+
+                    if ($ansChild->getName() == "CONTENT") {
+                        $qText .= (string) $ansChild;
+                    }
+                }
             }
 
             // Loop the outcome nodes
@@ -232,9 +226,8 @@ class qformat_qml extends qformat_default {
 
                                     // Trim the far right comma from the answer text.
                                     $ansText = rtrim($ansText, ',');
-                                    
                                 } else {
-                                    $ansText = str_replace('"', "", $ansParts[3]); 
+                                    $ansText = str_replace('"', "", $ansParts[3]);
                                 }
 
                                 // Currently this will only match exact answers regardless of what the
@@ -254,12 +247,19 @@ class qformat_qml extends qformat_default {
                 }
             }
         }
+        
+        $qText = addslashes(trim((string) $qText));
+
+        // Try to overwrite the generic question name with something more descriptive
+        if ($qo->questiontext == "Fill in Blanks question") {
+            $qo->name = $qText;
+        }
 
         // Overwrite the question text for this queston type
         if ($isMultipleAns) {
-            $qo->questiontext = addslashes(trim($qText)) . get_string('blankmultiquestionhint', 'qformat_qml');
+            $qo->questiontext = $qText . get_string('blankmultiquestionhint', 'qformat_qml');
         } else {
-            $qo->questiontext = addslashes(trim((string) $qText));
+            $qo->questiontext = $qText;
         }
     }
 
