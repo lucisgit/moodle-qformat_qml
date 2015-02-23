@@ -96,6 +96,10 @@ class qformat_qml extends qformat_default {
 
         // Header parts particular to multichoice.
         $qo->qtype = 'multichoice';
+
+        $qo->answernumbering = 'abc';
+        
+        
     }
 
     public function import_truefalse($xml_question) {
@@ -247,7 +251,7 @@ class qformat_qml extends qformat_default {
                 }
             }
         }
-        
+
         $qText = addslashes(trim((string) $qText));
 
         // Try to overwrite the generic question name with something more descriptive
@@ -261,12 +265,6 @@ class qformat_qml extends qformat_default {
         } else {
             $qo->questiontext = $qText;
         }
-    }
-
-    // Questionmark questions with a single score, but multiple answer parts
-    //e.g. The {blank} was very {blank} and looked {blank}
-    private function import_multi_answer_fib($xml_question, &$qo) {
-        
     }
 
     // Questionmark questions with a score per blank answer
