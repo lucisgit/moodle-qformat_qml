@@ -98,8 +98,8 @@ class qformat_qml extends qformat_default {
         $qo->qtype = 'multichoice';
 
         $qo->answernumbering = 'abc';
-        
-        
+
+        // Loop answers
     }
 
     public function import_truefalse($xml_question) {
@@ -164,9 +164,9 @@ class qformat_qml extends qformat_default {
             $multi_answer = strpos((string) $xml_question->OUTCOME->CONDITION, "AND");
 
             if ($multi_answer !== FALSE) {
-                $this->import_fib($xml_question, $qo, true);
+                $qo = $this->import_fib($xml_question, $qo, true);
             } else {
-                $this->import_fib($xml_question, $qo, false);
+                $qo = $this->import_fib($xml_question, $qo, false);
             }
         } else if ($fib_type == 0) {
             //$this->import_multi_score_fib($xml_question, $qo);
@@ -179,7 +179,7 @@ class qformat_qml extends qformat_default {
     }
 
     // Questionmark questions with a single answer
-    private function import_fib($xml_question, &$qo, $isMultipleAns) {
+    private function import_fib($xml_question, $qo, $isMultipleAns) {
 
         $qText = "";
         $acount = 0;
@@ -217,7 +217,10 @@ class qformat_qml extends qformat_default {
                                 // we only want to know the Value text to match against the users answer.
                                 $ansParts = explode(" ", (string) $child->CONDITION);
 
+                                $ansText = str_replace('"', "", $ansParts[3]);
+
                                 if ($isMultipleAns) {
+                                    $ansText = "";
                                     foreach ($ansParts as $ansPart) {
                                         if (strpos($ansPart, '"') !== FALSE) {
                                             $text = str_replace('"', "", $ansPart);
@@ -230,8 +233,6 @@ class qformat_qml extends qformat_default {
 
                                     // Trim the far right comma from the answer text.
                                     $ansText = rtrim($ansText, ',');
-                                } else {
-                                    $ansText = str_replace('"', "", $ansParts[3]);
                                 }
 
                                 // Currently this will only match exact answers regardless of what the
@@ -259,12 +260,14 @@ class qformat_qml extends qformat_default {
             $qo->name = $qText;
         }
 
+        $qo->questiontext = $qText;
+
         // Overwrite the question text for this queston type
         if ($isMultipleAns) {
-            $qo->questiontext = $qText . get_string('blankmultiquestionhint', 'qformat_qml');
-        } else {
-            $qo->questiontext = $qText;
+            $qo->questiontext .= get_string('blankmultiquestionhint', 'qformat_qml');
         }
+
+        return $qo;
     }
 
     // Questionmark questions with a score per blank answer
