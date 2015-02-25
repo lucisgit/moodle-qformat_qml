@@ -99,7 +99,42 @@ class qformat_qml extends qformat_default {
 
         $qo->answernumbering = 'abc';
 
+        $qo->single = 0;
+
+        $qo->shuffleanswers = 0;
+
         // Loop answers
+        $acount = 0;
+        $ansText = "";
+
+        $ansConditionText = (string)$xml_question->OUTCOME[0]->CONDITION;
+        $ansCondition = $this->parse_answer_condition($ansConditionText);
+
+        foreach ($xml_question->children() as $child) {
+            // Get the answer text
+            if ($child->getName() == "ANSWER") {
+                foreach ($child->children() as $ansChild) {
+                    if ($ansChild->getName() == "CHOICE") {
+                        $ansText = (string) $ansChild->CONTENT;
+
+                        $qo->answer[$acount] = array("text" => $ansText, "format" => FORMAT_MOODLE);
+                        $qo->fraction[$acount] = $ansCondition[$acount];
+                        $qo->feedback[$acount] = array("text" => "", "format" => FORMAT_MOODLE);
+                        
+                        ++$acount;
+                    }
+                }
+                break;
+            }
+        }
+
+        return $qo;
+    }
+
+    private function parse_answer_condition($ansConditionText) {
+        
+        // Testing the return
+        return array(0.25, 0, 0.25, 0.25, 0.25);
     }
 
     public function import_truefalse($xml_question) {
@@ -203,50 +238,45 @@ class qformat_qml extends qformat_default {
             if ($child->getName() == "OUTCOME") {
                 foreach ($child->children() as $outcome) {
                     if ($outcome->getName() == "CONDITION") {
-                        // Does the choice ID match the condition ID
-                        if (strpos((string) $outcome, "$acount") !== FALSE) {
+                        // This condition is for the correct answer
+                        if ($child['ID'] == "right") {
+                            $qo->fraction[$acount] = $child['SCORE'];
 
-                            // This condition is for the correct answer
-                            if ($child['ID'] == "right") {
-                                $qo->fraction[$acount] = $child['SCORE'];
+                            // The CONDITION text has 5 parts
+                            // NOT | Choices | Operation | Value | Boolean
+                            // They can be conditionals e.g. a node may look like
+                            // <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
+                            // we only want to know the Value text to match against the users answer.
+                            $ansParts = explode(" ", (string) $child->CONDITION);
 
-                                // The CONDITION text has 5 parts
-                                // NOT | Choices | Operation | Value | Boolean
-                                // They can be conditionals e.g. a node may look like
-                                // <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
-                                // we only want to know the Value text to match against the users answer.
-                                $ansParts = explode(" ", (string) $child->CONDITION);
+                            $ansText = str_replace('"', "", $ansParts[3]);
 
-                                $ansText = str_replace('"', "", $ansParts[3]);
+                            if ($isMultipleAns) {
+                                $ansText = "";
+                                foreach ($ansParts as $ansPart) {
+                                    if (strpos($ansPart, '"') !== FALSE) {
+                                        $text = str_replace('"', "", $ansPart);
 
-                                if ($isMultipleAns) {
-                                    $ansText = "";
-                                    foreach ($ansParts as $ansPart) {
-                                        if (strpos($ansPart, '"') !== FALSE) {
-                                            $text = str_replace('"', "", $ansPart);
-
-                                            if (is_numeric($text) !== TRUE) {
-                                                $ansText .= $text . ',';
-                                            }
+                                        if (is_numeric($text) !== TRUE) {
+                                            $ansText .= $text . ',';
                                         }
                                     }
-
-                                    // Trim the far right comma from the answer text.
-                                    $ansText = rtrim($ansText, ',');
                                 }
 
-                                // Currently this will only match exact answers regardless of what the
-                                // exported settings were.                                
-                                // Set the value text as our correct answer.
-                                $qo->answer[$acount] = $ansText;
-
-                                //Questionmark FIB questions can have multiple "blanks", moodle doesn't support
-                                //this question type by default
-                                //Possible way would be to set the question answer text to: "THE BLANK1, BLANK2"
-                                //Seperating answers via comma and allowing spaces for each blank
-
-                                $qo->feedback[$acount] = array("text" => $child->CONTENT, "format" => FORMAT_MOODLE);
+                                // Trim the far right comma from the answer text.
+                                $ansText = rtrim($ansText, ',');
                             }
+
+                            // Currently this will only match exact answers regardless of what the
+                            // exported settings were.  (case-insensitive)                                
+                            // Set the value text as our correct answer.
+                            $qo->answer[$acount] = $ansText;
+
+                            //Questionmark FIB questions can have multiple "blanks", moodle doesn't support
+                            //this question type by default
+                            //Current solution is to seperate answers via a comma e.g "THE BLANK1,BLANK2"
+
+                            $qo->feedback[$acount] = array("text" => $child->CONTENT, "format" => FORMAT_MOODLE);
                         }
                     }
                 }
