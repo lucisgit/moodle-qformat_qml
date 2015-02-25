@@ -12,6 +12,11 @@ class qformat_qml extends qformat_default {
         return 'application/xml';
     }
 
+    /**
+     * Parses the uploaded QML data
+     * @param string the filename containig the data
+     * @return SimpleXML_Object a SimpleXML_Object containing all question data
+     */
     public function readdata($filename) {
         // Read the XML into a simpleXMLObject
         $sxmlref = simplexml_load_file($filename);
@@ -25,6 +30,11 @@ class qformat_qml extends qformat_default {
         return false;
     }
 
+    /**
+     * Populates an array with questions
+     * @param SimpleXML_Object contains the question data in a SimpleXML_Object
+     * @return array an array of question objects
+     */
     public function readquestions($sxmlref) {
 
         //array to hold the questions
@@ -61,6 +71,11 @@ class qformat_qml extends qformat_default {
         return $questions;
     }
 
+    /**
+     * Bootstrap a question object
+     * @param SimpleXML_Object contains the question data in a SimpleXML_Object
+     * @return object question object
+     */
     public function import_headers($xml_question) {
         //initalise question object
         $qo = $this->defaultquestion();
@@ -90,6 +105,11 @@ class qformat_qml extends qformat_default {
         return $qo;
     }
 
+    /**
+     * Import a multichoice question
+     * @param SimpleXML_Object contains the question data in a SimpleXML_Object
+     * @return object question object
+     */
     public function import_multichoice($xml_question) {
         // Common question headers
         $qo = $this->import_headers($xml_question);
@@ -107,7 +127,7 @@ class qformat_qml extends qformat_default {
         $acount = 0;
         $ansText = "";
 
-        $ansConditionText = (string)$xml_question->OUTCOME[0]->CONDITION;
+        $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
         $ansCondition = $this->parse_answer_condition($ansConditionText);
 
         foreach ($xml_question->children() as $child) {
@@ -120,7 +140,7 @@ class qformat_qml extends qformat_default {
                         $qo->answer[$acount] = array("text" => $ansText, "format" => FORMAT_MOODLE);
                         $qo->fraction[$acount] = $ansCondition[$acount];
                         $qo->feedback[$acount] = array("text" => "", "format" => FORMAT_MOODLE);
-                        
+
                         ++$acount;
                     }
                 }
@@ -131,12 +151,25 @@ class qformat_qml extends qformat_default {
         return $qo;
     }
 
+    /**
+     * Calculate the correct fraction for each answer
+     * @param string logical string identifying the correct answer sequence
+     * @return array contains the fractions
+     */
     private function parse_answer_condition($ansConditionText) {
-        
-        // Testing the return
-        return array(0.25, 0, 0.25, 0.25, 0.25);
+
+        // TODO - Implement function logic
+        // Identify how many different choices of answers the question has
+        // Work out which answers are correct
+        // Split the fraction between the correct answers
+        // Return the array of fractions e.g return array(0.25, 0, 0.25, 0.25, 0.25);
     }
 
+    /**
+     * Import true or false question
+     * @param SimpleXML_Object contains the question data in a SimpleXML_Object
+     * @return object question object
+     */
     public function import_truefalse($xml_question) {
         // get common parts
         $qo = $this->import_headers($xml_question);
@@ -179,6 +212,11 @@ class qformat_qml extends qformat_default {
         return $qo;
     }
 
+    /**
+     * Import a shortanswer question
+     * @param SimpleXML_Object xml object containing the question data
+     * @return object question object
+     */
     public function import_shortanswer($xml_question) {
         // Get common parts.
         $qo = $this->import_headers($xml_question);
@@ -213,7 +251,13 @@ class qformat_qml extends qformat_default {
         return $qo;
     }
 
-    // Questionmark questions with a single answer
+    /**
+     * Import a fill in the blanks question
+     * @param SimpleXML_Object xml object containing the question data
+     * @param object a partly populated question object to work with
+     * @param boolean true if this question has multiple 'blanks' in it's answer
+     * @return object the modified question object
+     */
     private function import_fib($xml_question, $qo, $isMultipleAns) {
 
         $qText = "";
@@ -300,12 +344,21 @@ class qformat_qml extends qformat_default {
         return $qo;
     }
 
-    // Questionmark questions with a score per blank answer
-    private function import_multi_score_fib($xml_question, &$qo) {
+    /**
+     * Import a fill in the blanks question that has a score per blannk
+     * @param SimpleXML_Object xml object containing the question data
+     * @param object a partly populated question object to work with
+     * @return object the modified question object
+     */
+    private function import_multi_score_fib($xml_question, $qo) {
         
     }
 
-    // Gets the moodle equivelant of the Questionmark question type
+    /**
+     * Gets the moodle equivelant of the Questionmark question type
+     * @param string the Questionmark question type string
+     * @return string the moodle question type string
+     */
     private function get_question_type($str_QTYPE) {
         $mdl_questiontype = "";
         switch ($str_QTYPE) {
@@ -327,7 +380,11 @@ class qformat_qml extends qformat_default {
         return $mdl_questiontype;
     }
 
-    private function get_xml_attr($xml, $findAttr) {
+    /**
+     * A recursive function to traverse the SimpleXML_Object
+     * @param SimpleXML_Object the xml object to traverse
+     */
+    private function display_xml($xml) {
 
         foreach ($xml->children() as $child) {
             foreach ($child->attributes() as $attr => $attrVal) {
