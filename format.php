@@ -261,8 +261,17 @@ class qformat_qml extends qformat_default {
     private function import_fib($xml_question, $qo, $isMultipleAns) {
 
         $qText = "";
-        $acount = 0;
         $ansText = "";
+
+        $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+
+        $correct_ans_feedback = (string) $xml_question->OUTCOME[0]->CONTENT;
+        $incorrect_ans_feedback = (string) $xml_question->OUTCOME[1]->CONTENT;
+        $qo->feedback[] = array("text" => $correct_ans_feedback, "format" => FORMAT_MOODLE);
+        $qo->feedback[] = array("text" => $incorrect_ans_feedback, "format" => FORMAT_MOODLE);
+        
+        // How much is this answer worth for this question. 
+        $qo->fraction[] = 1;
 
         foreach ($xml_question->children() as $child) {
             // Get the ID of the first choice node
@@ -277,55 +286,43 @@ class qformat_qml extends qformat_default {
                     }
                 }
             }
+        }
 
-            // Loop the outcome nodes
-            if ($child->getName() == "OUTCOME") {
-                foreach ($child->children() as $outcome) {
-                    if ($outcome->getName() == "CONDITION") {
-                        // This condition is for the correct answer
-                        if ($child['ID'] == "right") {
-                            $qo->fraction[$acount] = $child['SCORE'];
+        // The CONDITION text has 5 parts
+        // NOT | Choices | Operation | Value | Boolean
+        // They can be conditionals e.g. a node may look like
+        // <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
+        // we only want to know the Value text to match against the users answer.
+        $ansParts = explode(" ", (string) $ansConditionText);
+        
+        // TODO - Test to ensure that the correct answer will always be found at the 3rd index
+        $ansText = str_replace('"', "", $ansParts[3]);
+        
+        // Build the answer string by adding each answer separated by a comma
+        if ($isMultipleAns) {
+            $ansText = "";
+            foreach ($ansParts as $ansPart) {
+                if (strpos($ansPart, '"') !== FALSE) {
+                    $text = str_replace('"', "", $ansPart);
 
-                            // The CONDITION text has 5 parts
-                            // NOT | Choices | Operation | Value | Boolean
-                            // They can be conditionals e.g. a node may look like
-                            // <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
-                            // we only want to know the Value text to match against the users answer.
-                            $ansParts = explode(" ", (string) $child->CONDITION);
-
-                            $ansText = str_replace('"', "", $ansParts[3]);
-
-                            if ($isMultipleAns) {
-                                $ansText = "";
-                                foreach ($ansParts as $ansPart) {
-                                    if (strpos($ansPart, '"') !== FALSE) {
-                                        $text = str_replace('"', "", $ansPart);
-
-                                        if (is_numeric($text) !== TRUE) {
-                                            $ansText .= $text . ',';
-                                        }
-                                    }
-                                }
-
-                                // Trim the far right comma from the answer text.
-                                $ansText = rtrim($ansText, ',');
-                            }
-
-                            // Currently this will only match exact answers regardless of what the
-                            // exported settings were.  (case-insensitive)                                
-                            // Set the value text as our correct answer.
-                            $qo->answer[$acount] = $ansText;
-
-                            //Questionmark FIB questions can have multiple "blanks", moodle doesn't support
-                            //this question type by default
-                            //Current solution is to seperate answers via a comma e.g "THE BLANK1,BLANK2"
-
-                            $qo->feedback[$acount] = array("text" => $child->CONTENT, "format" => FORMAT_MOODLE);
-                        }
+                    if (is_numeric($text) !== TRUE) {
+                        $ansText .= $text . ',';
                     }
                 }
             }
+
+            // Trim the far right comma from the answer text.
+            $ansText = rtrim($ansText, ',');
         }
+
+        // Currently this will only match exact answers regardless of what the
+        // exported settings were.  (case-insensitive)                                
+        // Set the value text as our correct answer.
+        $qo->answer[] = $ansText;
+
+        //Questionmark FIB questions can have multiple "blanks", moodle doesn't support
+        //this question type by default
+        //Current solution is to seperate answers via a comma e.g "THE BLANK1,BLANK2"
 
         $qText = addslashes(trim((string) $qText));
 
