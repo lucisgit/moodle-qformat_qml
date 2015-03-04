@@ -127,19 +127,41 @@ class qformat_qml extends qformat_default {
         $acount = 0;
         $ansText = "";
 
+        // TODO - Multiple choice can have a condition string or multiple answer nodes
+        // Need to parse the individual answer nodes into a format that can be used in
+        // the parse_answer_condition method?
         $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+
+        // It is possible that this text will be: "0" or "1" this is not currently supported.
+        // We want a condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
+        if (strlen($ansConditionText) <= 3) {
+            $this->error("This type of multichoice question is not currently supported");
+            $qo = null;
+            return $qo;
+        }
+
         $ansCondition = $this->parse_answer_condition($ansConditionText);
 
+
+        // Set some default values for feedback
+        $qo->correctfeedback = array("text" => "Correct", "format" => FORMAT_MOODLE);
+        $qo->partiallycorrectfeedback = array("text" => "Partly Correct", "format" => FORMAT_MOODLE);
+        $qo->incorrectfeedback = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
+        
         foreach ($xml_question->children() as $child) {
             // Get the answer text
             if ($child->getName() == "ANSWER") {
                 foreach ($child->children() as $ansChild) {
                     if ($ansChild->getName() == "CHOICE") {
                         $ansText = (string) $ansChild->CONTENT;
+                        $ansFraction = $ansCondition[$acount];
 
                         $qo->answer[$acount] = array("text" => $ansText, "format" => FORMAT_MOODLE);
-                        $qo->fraction[$acount] = $ansCondition[$acount];
-                        $qo->feedback[$acount] = array("text" => "", "format" => FORMAT_MOODLE);
+                        $qo->fraction[$acount] = $ansFraction;
+                        $qo->feedback[$acount] = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
+                        if ($ansFraction > 0) {
+                            $qo->feedback[$acount] = array("text" => "Correct", "format" => FORMAT_MOODLE);
+                        }
 
                         ++$acount;
                     }
@@ -154,15 +176,57 @@ class qformat_qml extends qformat_default {
     /**
      * Calculate the correct fraction for each answer
      * @param string logical string identifying the correct answer sequence
-     * @return array contains the fractions
+     * @return array contains the fractions for each answer
      */
-    private function parse_answer_condition($ansConditionText) {
+    private function parse_answer_condition($ans_condition_text) {
 
-        // TODO - Implement function logic
-        // Identify how many different choices of answers the question has
-        // Work out which answers are correct
-        // Split the fraction between the correct answers
-        // Return the array of fractions e.g return array(0.25, 0, 0.25, 0.25, 0.25);
+        $ansCount = 0;
+        $ans_text_parts = explode(' ', $ans_condition_text);
+        $fraction_arr = array();
+
+        // Count the number of answers and clean the array of empty strings
+        $ans_text_count = count($ans_text_parts);
+        for ($cntr = 0; $cntr < $ans_text_count; $cntr++) {
+            if (strlen($ans_text_parts[$cntr]) == 0) {
+                unset($ans_text_parts[$cntr]);
+            } else if (strpos($ans_text_parts[$cntr], '"') !== FALSE) {
+                $ansCount++;
+            }
+        }
+
+        $correct_ans_count = 0;
+
+        // Populate the fraction array with the answer fractions
+        // Checks to see if the current text value of the condition string
+        // is "NOT", if it is then a not flag is set ($last_value_not) to true
+        // and when the next answer value is detected ( a string with " e.g. "0")
+        // the value for that answer is set to 0; otherwise the answer value is
+        // set to answers worth;
+        $last_value_not = false;
+        foreach ($ans_text_parts as $ans_text_part) {
+            if ($ans_text_part == "NOT") {
+                $last_value_not = true;
+            } else if (strpos($ans_text_part, '"') !== FALSE) {
+                if ($last_value_not) {
+                    $fraction_arr[] = 0;
+                    $last_value_not = false;
+                } else {
+                    $fraction_arr[] = 1;
+                    $correct_ans_count++;
+                }
+            }
+        }
+
+        // Calculate how much each correct answer is actually worth
+        $correct_ans_worth = 1 / $correct_ans_count;
+
+        for ($cntr = 0; $cntr < count($fraction_arr); $cntr++) {
+            if ($fraction_arr[$cntr] == 1) {
+                $fraction_arr[$cntr] = $correct_ans_worth;
+            }
+        }
+
+        return $fraction_arr;
     }
 
     /**
@@ -269,7 +333,7 @@ class qformat_qml extends qformat_default {
         $incorrect_ans_feedback = (string) $xml_question->OUTCOME[1]->CONTENT;
         $qo->feedback[] = array("text" => $correct_ans_feedback, "format" => FORMAT_MOODLE);
         $qo->feedback[] = array("text" => $incorrect_ans_feedback, "format" => FORMAT_MOODLE);
-        
+
         // How much is this answer worth for this question. 
         $qo->fraction[] = 1;
 
@@ -294,10 +358,10 @@ class qformat_qml extends qformat_default {
         // <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
         // we only want to know the Value text to match against the users answer.
         $ansParts = explode(" ", (string) $ansConditionText);
-        
+
         // TODO - Test to ensure that the correct answer will always be found at the 3rd index
         $ansText = str_replace('"', "", $ansParts[3]);
-        
+
         // Build the answer string by adding each answer separated by a comma
         if ($isMultipleAns) {
             $ansText = "";
