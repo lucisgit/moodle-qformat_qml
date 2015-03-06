@@ -88,8 +88,8 @@ class qformat_qml extends qformat_default {
         $qo->generalfeedbackformat = 1;
         $qo->feedbackformat = FORMAT_MOODLE;
 
-        //content tags
-        $content_type = (string)$xml_question->CONTENT['TYPE'];
+        //get the content type for this question
+        $content_type = (string) $xml_question->CONTENT['TYPE'];
 
         switch ($content_type) {
             case "text/plain":
@@ -117,40 +117,37 @@ class qformat_qml extends qformat_default {
 
         // Header parts particular to multichoice.
         $qo->qtype = 'multichoice';
-
         $qo->answernumbering = 'abc';
-
         $qo->single = 0;
-
         $qo->shuffleanswers = 0;
 
-        // Loop answers
+        // Answer count
         $acount = 0;
+        
+        // Answer text
         $ansText = "";
+        
+        // Array holding to hold the correct answer fractions
+        $ansCondition = array();
 
-        // TODO - Multiple choice can have a condition string or multiple answer nodes
-        // Need to parse the individual answer nodes into a format that can be used in
-        // the parse_answer_condition method?
         $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
 
         // It is possible that this text will be: "0" or "1" this is not currently supported.
         // We want a condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
         if (strlen($ansConditionText) <= 3) {
-            $this->error("This type of multichoice question is not currently supported");
-            $qo = null;
-            return $qo;
+            $ansConditionText = $this->build_logical_answer_string($xml_question);
         }
-
+        
+        // Parse the logical answer string into an array of fractions
         $ansCondition = $this->parse_answer_condition($ansConditionText);
-
 
         // Set some default values for feedback
         $qo->correctfeedback = array("text" => "Correct", "format" => FORMAT_MOODLE);
         $qo->partiallycorrectfeedback = array("text" => "Partly Correct", "format" => FORMAT_MOODLE);
         $qo->incorrectfeedback = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
         
+        // Loop the answers and set the correct fraction and default feedback for each
         foreach ($xml_question->children() as $child) {
-            // Get the answer text
             if ($child->getName() == "ANSWER") {
                 foreach ($child->children() as $ansChild) {
                     if ($ansChild->getName() == "CHOICE") {
@@ -172,6 +169,33 @@ class qformat_qml extends qformat_default {
         }
 
         return $qo;
+    }
+
+    /**
+     * Builds a logical string to parse the correct answers. Used when the 
+     * mulichoice question has seperate answers for the question.
+     * @param SimpleXMLObject the XML question object
+     * @return string a logical string to be used for the parse_answer_condition method
+     */
+    private function build_logical_answer_string($xml_question) {
+
+        $ans_string = "";
+        $acount = 0;
+
+        foreach ($xml_question->children() as $child) {
+            if ($child->getName() == "OUTCOME") {
+                
+                if($child['SCORE'] == 0) {
+                    $ans_string .= "NOT ";  
+                }
+                
+                $ans_string .= '"'. $acount . '"' . ' ';
+            }
+            
+            ++$acount;
+        }
+        
+        return $ans_string;
     }
 
     /**
