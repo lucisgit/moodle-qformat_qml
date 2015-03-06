@@ -15,9 +15,9 @@
 
 Example FIB Question
 
-(Question) {blank} is a very {blank} day.
+(Question) **{blank}** is a very **{blank}** day.
 
-(Answer) Today is a very sunny day.
+(Answer) **Today** is a very **sunny** day.
 
 This would mean that the answer to this question after it has been imported to Moodle would become a string which matches (case insensitive): "Today,sunny". 
 
