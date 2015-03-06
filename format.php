@@ -89,7 +89,7 @@ class qformat_qml extends qformat_default {
         $qo->feedbackformat = FORMAT_MOODLE;
 
         //content tags
-        $content_type = $xml_question->CONTENT['TYPE'];
+        $content_type = (string)$xml_question->CONTENT['TYPE'];
 
         switch ($content_type) {
             case "text/plain":
@@ -99,7 +99,8 @@ class qformat_qml extends qformat_default {
                 $qo->questiontextformat = 1; // html
                 break;
             default:
-                $this->error("Unknown content type in question header ($content_type)");
+                echo get_string('contenttypenotset', 'qformat_qml');
+                $qo->questiontextformat = 1; // html
         }
 
         return $qo;
