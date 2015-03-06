@@ -22,7 +22,6 @@
  * @copyright  2015, Lancaster University ISS
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
 defined('MOODLE_INTERNAL') || die();
 
 class qformat_qml extends qformat_default {
@@ -146,21 +145,21 @@ class qformat_qml extends qformat_default {
 
         // Answer count
         $acount = 0;
-        
+
         // Answer text
         $ansText = "";
-        
+
         // Array holding to hold the correct answer fractions
         $ansCondition = array();
 
         $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
 
-        // It is possible that this text will be: "0" or "1" this is not currently supported.
-        // We want a condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
+        // It is possible that this text will be: "0" or "1", but we want a
+        // condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
         if (strlen($ansConditionText) <= 3) {
             $ansConditionText = $this->build_logical_answer_string($xml_question);
         }
-        
+
         // Parse the logical answer string into an array of fractions
         $ansCondition = $this->parse_answer_condition($ansConditionText);
 
@@ -168,7 +167,7 @@ class qformat_qml extends qformat_default {
         $qo->correctfeedback = array("text" => "Correct", "format" => FORMAT_MOODLE);
         $qo->partiallycorrectfeedback = array("text" => "Partly Correct", "format" => FORMAT_MOODLE);
         $qo->incorrectfeedback = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
-        
+
         // Loop the answers and set the correct fraction and default feedback for each
         foreach ($xml_question->children() as $child) {
             if ($child->getName() == "ANSWER") {
@@ -207,17 +206,17 @@ class qformat_qml extends qformat_default {
 
         foreach ($xml_question->children() as $child) {
             if ($child->getName() == "OUTCOME") {
-                
-                if($child['SCORE'] == 0) {
-                    $ans_string .= "NOT ";  
+
+                if ($child['SCORE'] == 0) {
+                    $ans_string .= "NOT ";
                 }
-                
-                $ans_string .= '"'. $acount . '"' . ' ';
+
+                $ans_string .= '"' . $acount . '"' . ' ';
             }
-            
+
             ++$acount;
         }
-        
+
         return $ans_string;
     }
 
@@ -349,13 +348,12 @@ class qformat_qml extends qformat_default {
             $multi_answer = strpos((string) $xml_question->OUTCOME->CONDITION, "AND");
 
             if ($multi_answer !== FALSE) {
-                $qo = $this->import_fib($xml_question, $qo, true);
+                $qo = $this->import_fib($xml_question, $qo, true, false);
             } else {
-                $qo = $this->import_fib($xml_question, $qo, false);
+                $qo = $this->import_fib($xml_question, $qo, false, false);
             }
         } else if ($fib_type == 0) {
-            //$this->import_multi_score_fib($xml_question, $qo);
-            $this->error("This question type (multiple score per blank) is not supported yet.");
+            $this->import_fib($xml_question, $qo, true, true);
         } else {
             $this->error("Unable to determine question type");
         }
@@ -370,15 +368,20 @@ class qformat_qml extends qformat_default {
      * @param boolean true if this question has multiple 'blanks' in it's answer
      * @return object the modified question object
      */
-    private function import_fib($xml_question, $qo, $isMultipleAns) {
+    private function import_fib($xml_question, $qo, $isMultipleAns, $isMultipleScore) {
 
         $qText = "";
         $ansText = "";
+        $correct_ans_feedback = "Correct";
+        $incorrect_ans_feedback = "Incorrect";
+        $ansConditionText = "";
 
-        $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+        if (!$isMultipleScore) {
+            $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+            $correct_ans_feedback = (string) $xml_question->OUTCOME[0]->CONTENT;
+            $incorrect_ans_feedback = (string) $xml_question->OUTCOME[1]->CONTENT;
+        }
 
-        $correct_ans_feedback = (string) $xml_question->OUTCOME[0]->CONTENT;
-        $incorrect_ans_feedback = (string) $xml_question->OUTCOME[1]->CONTENT;
         $qo->feedback[] = array("text" => $correct_ans_feedback, "format" => FORMAT_MOODLE);
         $qo->feedback[] = array("text" => $incorrect_ans_feedback, "format" => FORMAT_MOODLE);
 
@@ -398,7 +401,15 @@ class qformat_qml extends qformat_default {
                     }
                 }
             }
+            
+            if($child->getName() == "OUTCOME") {
+                if($child['ID'] != "Always happens") {
+                    $ansConditionText .= (string)$child->CONDITION . " ";
+                }
+            }
         }
+        
+        echo $ansConditionText;
 
         // The CONDITION text has 5 parts
         // NOT | Choices | Operation | Value | Boolean
@@ -411,6 +422,8 @@ class qformat_qml extends qformat_default {
         $ansText = str_replace('"', "", $ansParts[3]);
 
         // Build the answer string by adding each answer separated by a comma
+        // TODO - (FIX?) if the users knows part of the missing answer,
+        // but not the whole thing, they will get this question wrong.
         if ($isMultipleAns) {
             $ansText = "";
             foreach ($ansParts as $ansPart) {
