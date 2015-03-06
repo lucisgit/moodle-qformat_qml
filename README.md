@@ -6,7 +6,7 @@
 
 ### Supported Questionmark question types ###
 
-* Fill In The Blanks (FIB)
+* Fill In The Blanks (FIB) *
 * Multiple Response (MR)
 * Multiple Choice (MC)
 
