@@ -11,7 +11,7 @@
 * Multiple Choice (MC)
 
 ### Potential issues ###
-**FIB questions have been converted to moodle shortanswer questions, this isn't ideal as the FIB questions can have multiple answers in one question, but shortanswers only support one answer.*
+*FIB questions have been converted to moodle shortanswer questions, this isn't ideal as the FIB questions can have multiple answers in one question, but shortanswers only support one answer.
 
 Example FIB Question
 
