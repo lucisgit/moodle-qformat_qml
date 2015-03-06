@@ -409,8 +409,6 @@ class qformat_qml extends qformat_default {
             }
         }
         
-        echo $ansConditionText;
-
         // The CONDITION text has 5 parts
         // NOT | Choices | Operation | Value | Boolean
         // They can be conditionals e.g. a node may look like
