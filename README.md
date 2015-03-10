@@ -23,4 +23,4 @@ This would mean that the answer to this question after it has been imported to M
 
 If the user only knew part of the answer e,g, "Today," then they would get 0 marks for this question.
 
-A good fix to this would be to create an equivalent FIB question type for Moodle.
+A potential fix to this would be to create an equivalent FIB question type for Moodle or Cloze Question?
