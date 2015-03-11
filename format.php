@@ -335,27 +335,26 @@ class qformat_qml extends qformat_default {
         // Header parts particular to shortanswer.
         $qo->qtype = 'shortanswer';
 
-        // Each blank answer from Questionmark can have it's own case setting
-        // moodle only supports a single setting per shortanswer question
-        $qo->usecase = 0; // Ignore case for all FIB questions. ^^
-        // Find out what type of FIB question we are dealing with
-        // e.g. Does the question have one answer or multiple blanks to answer
-        // A single answer question has the outcome ID of "right"
+        // Ignore case for all FIB questions.
+        $qo->usecase = 0;
+
+        // Find out if the question has a single condition string
+        // fib_type = "right" means that the condition string is not in more
+        // than one part.
         $fib_type = $xml_question->OUTCOME[0]["ID"];
 
         if ($fib_type == "right") {
-            //The question can still have multiple blanks, but only a single score
-            $multi_answer = strpos((string) $xml_question->OUTCOME->CONDITION, "AND");
+            // The question can still have multiple answers, multiple answers
+            // are seperated by the "AND" keyword within the logical string.
+            $has_multi_answer = strpos((string) $xml_question->OUTCOME->CONDITION, "AND") !== FALSE;
 
-            if ($multi_answer !== FALSE) {
-                $qo = $this->import_fib($xml_question, $qo, true, false);
+            if ($has_multi_answer) {
+                $qo = $this->import_multi_answer_fib($xml_question, $qo);
             } else {
-                $qo = $this->import_fib($xml_question, $qo, false, false);
+                $this->import_fib($xml_question, $qo, true);
             }
-        } else if ($fib_type == 0) {
-            $this->import_fib($xml_question, $qo, true, true);
         } else {
-            $this->error("Unable to determine question type");
+            $qo = $this->import_multi_answer_fib($xml_question, $qo);
         }
 
         return $qo;
@@ -368,47 +367,51 @@ class qformat_qml extends qformat_default {
      * @param boolean true if this question has multiple 'blanks' in it's answer
      * @return object the modified question object
      */
-    private function import_fib($xml_question, $qo, $isMultipleAns, $isMultipleScore) {
+    private function import_fib($xml_question, $qo) {
 
         $qText = "";
         $ansText = "";
-        $correct_ans_feedback = "Correct";
-        $incorrect_ans_feedback = "Incorrect";
+        $correct_ans_feedback = "";
+        $incorrect_ans_feedback = "";
         $ansConditionText = "";
 
-        if (!$isMultipleScore) {
-            $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
-            $correct_ans_feedback = (string) $xml_question->OUTCOME[0]->CONTENT;
-            $incorrect_ans_feedback = (string) $xml_question->OUTCOME[1]->CONTENT;
-        }
+        $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+        $correct_ans_feedback = (string) $xml_question->OUTCOME[0]->CONTENT;
+        $incorrect_ans_feedback = (string) $xml_question->OUTCOME[1]->CONTENT;
 
         $qo->feedback[] = array("text" => $correct_ans_feedback, "format" => FORMAT_MOODLE);
         $qo->feedback[] = array("text" => $incorrect_ans_feedback, "format" => FORMAT_MOODLE);
 
         // How much is this answer worth for this question. 
         $qo->fraction[] = 1;
-
+        
+        // loop the question object
         foreach ($xml_question->children() as $child) {
-            // Get the ID of the first choice node
+            // We only care about the answer node
             if ($child->getName() == "ANSWER") {
                 foreach ($child->children() as $ansChild) {
-                    if ($ansChild->getName() == "CHOICE") {
-                        $qText .= ' _ ';
-                    }
 
+                    // Append the text contained in this Answer->Content node
                     if ($ansChild->getName() == "CONTENT") {
                         $qText .= (string) $ansChild;
                     }
+
+                    // Append a _ character instead of the answer
+                    // i.e. to show there is a blank that should go here
+                    if ($ansChild->getName() == "CHOICE") {
+                        $qText .= ' _ ';
+                    }
                 }
             }
-            
-            if($child->getName() == "OUTCOME") {
-                if($child['ID'] != "Always happens") {
-                    $ansConditionText .= (string)$child->CONDITION . " ";
-                }
-            }
+
+            // What is this doing?
+//            if ($child->getName() == "OUTCOME") {
+//                if ($child['ID'] != "Always happens") {
+//                    $ansConditionText .= (string) $child->CONDITION . " ";
+//                }
+//            }
         }
-        
+
         // The CONDITION text has 5 parts
         // NOT | Choices | Operation | Value | Boolean
         // They can be conditionals e.g. a node may look like
@@ -417,49 +420,50 @@ class qformat_qml extends qformat_default {
         $ansParts = explode(" ", (string) $ansConditionText);
 
         // TODO - Test to ensure that the correct answer will always be found at the 3rd index
+        // This 'should' be the correct answer.
         $ansText = str_replace('"', "", $ansParts[3]);
 
         // Build the answer string by adding each answer separated by a comma
         // TODO - (FIX?) if the users knows part of the missing answer,
         // but not the whole thing, they will get this question wrong.
-        if ($isMultipleAns) {
-            $ansText = "";
-            foreach ($ansParts as $ansPart) {
-                if (strpos($ansPart, '"') !== FALSE) {
-                    $text = str_replace('"', "", $ansPart);
-
-                    if (is_numeric($text) !== TRUE) {
-                        $ansText .= $text . ',';
-                    }
-                }
-            }
-
-            // Trim the far right comma from the answer text.
-            $ansText = rtrim($ansText, ',');
-        }
+//        if ($parse_logical_ans_string) {
+//            $ansText = "";
+//            foreach ($ansParts as $ansPart) {
+//                if (strpos($ansPart, '"') !== FALSE) {
+//                    $text = str_replace('"', "", $ansPart);
+//
+//                    if (is_numeric($text) !== TRUE) {
+//                        $ansText .= $text . ',';
+//                    }
+//                }
+//            }
+//
+//            // Trim the far right comma from the answer text.
+//            $ansText = rtrim($ansText, ',');
+//        }
 
         // Currently this will only match exact answers regardless of what the
         // exported settings were.  (case-insensitive)                                
         // Set the value text as our correct answer.
         $qo->answer[] = $ansText;
 
-        //Questionmark FIB questions can have multiple "blanks", moodle doesn't support
-        //this question type by default
-        //Current solution is to seperate answers via a comma e.g "THE BLANK1,BLANK2"
-
+        // Clean the text
         $qText = addslashes(trim((string) $qText));
 
         // Try to overwrite the generic question name with something more descriptive
+        // Not nessesary, but a lot of the test files had generic names, this
+        // will replace that with part of the question text.
         if ($qo->questiontext == "Fill in Blanks question") {
-            $qo->name = $qText;
+            $qo->name = substr($qText, 0, 20);
         }
-
+        
+        // Assign the question text
         $qo->questiontext = $qText;
 
         // Overwrite the question text for this queston type
-        if ($isMultipleAns) {
-            $qo->questiontext .= get_string('blankmultiquestionhint', 'qformat_qml');
-        }
+//        if ($isMultipleAns) {
+//            $qo->questiontext .= get_string('blankmultiquestionhint', 'qformat_qml');
+//        }
 
         return $qo;
     }
@@ -470,8 +474,35 @@ class qformat_qml extends qformat_default {
      * @param object a partly populated question object to work with
      * @return object the modified question object
      */
-    private function import_multi_score_fib($xml_question, $qo) {
-        
+    private function import_multi_answer_fib($xml_question, $qo) {
+        question_bank::get_qtype('multianswer');
+
+        // Parse QML text - import_fib basically does this, but we need to 
+        // build the Cloze question string in the correct format.
+        $questiontext = array();
+        $questiontext['text'] = $this->build_multianswer_string($xml_question);
+        $questiontext['format'] = FORMAT_MOODLE;
+
+        $qo = qtype_multianswer_extract_question($questiontext);
+
+        $qo->qtype = 'multianswer';
+        $qo->course = $this->course;
+
+        $qo->name = "FIB Multi Answer Question";
+        $qo->questiontextformat = 0;
+        $qo->questiontext = $qo->questiontext['text'];
+
+        $qo->generalfeedback = '';
+        $qo->generalfeedbackformat = FORMAT_MOODLE;
+        $qo->length = 1;
+        $qo->penalty = 0.3333333;
+
+
+        return $qo;
+    }
+
+    private function build_multianswer_string($xml_question) {
+        return 'The capital of France is {1:SHORTANSWER:%100%Paris#Congratulations!~%50%Marseille#No, that is the second largest city in France (after Paris).~*#Wrong answer. The capital of France is Paris, of course.}';
     }
 
     /**
