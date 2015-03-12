@@ -9,5 +9,6 @@
 * Fill In The Blanks (FIB) *
 * Multiple Response (MR)
 * Multiple Choice (MC)
+* True or False
 
 *FIB questions will either be a short answer question or they will be converted into a Embedded Answers (Cloze) question type.
