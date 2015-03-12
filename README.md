@@ -10,4 +10,4 @@
 * Multiple Response (MR)
 * Multiple Choice (MC)
 
-* FIB questions will either be a short answer question or they will be converted into a Embedded Answers (Cloze) question type.
+*FIB questions will either be a short answer question or they will be converted into a Embedded Answers (Cloze) question type.
