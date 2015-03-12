@@ -342,20 +342,12 @@ class qformat_qml extends qformat_default {
         // fib_type = "right" means that the condition string is not in more
         // than one part.
         $fib_type = $xml_question->OUTCOME[0]["ID"];
+        $has_multi_answer = strpos((string) $xml_question->OUTCOME->CONDITION, "AND") !== FALSE;
 
-        if ($fib_type == "right") {
-            // The question can still have multiple answers, multiple answers
-            // are seperated by the "AND" keyword within the logical string.
-            $has_multi_answer = strpos((string) $xml_question->OUTCOME->CONDITION, "AND") !== FALSE;
-
-            if ($has_multi_answer) {
-                $qo = $this->import_multi_answer_fib($xml_question, $qo);
-            } else {
-                $this->import_fib($xml_question, $qo, true);
-            }
+        if ($has_multi_answer || $fib_type == 0) {
+            $qo = $this->import_multi_answer_fib($xml_question, $qo);
         } else {
-            $this->error("Not supported yet");
-            //$qo = $this->import_multi_answer_fib($xml_question, $qo);
+            $this->import_fib($xml_question, $qo, true);
         }
 
         return $qo;
@@ -457,16 +449,16 @@ class qformat_qml extends qformat_default {
         // Parse QML text - import_fib basically does this, but we need to 
         // build the Cloze question string in the correct format.
         $questiontext = array();
-        
+
         // array holding question data
         $multi_ans_data = $this->build_multianswer_string($xml_question);
-        
+
         // set the questiontext and format
         $questiontext['text'] = $multi_ans_data['text'];
         $questiontext['format'] = FORMAT_MOODLE;
-        
+
         $qo = qtype_multianswer_extract_question($questiontext);
-        
+
         // set values for the question
         $qo->qtype = 'multianswer';
         $qo->course = $this->course;
@@ -483,23 +475,38 @@ class qformat_qml extends qformat_default {
         return $qo;
     }
 
+    /**
+     * Builds the Cloze question text string and the question name
+     * @param SimpleXML_Object xml object containing the question data
+     * @param boolean true if this question is a Questionmark multi score FIB
+     * @return array an array containing the questiontext and question name
+     */
     private function build_multianswer_string($xml_question) {
-        
+
         // string to hold the question name, used by the calling function
         $qname = "";
-        
+
         // The question type
         $qtype = ":SHORTANSWER:";
 
+        $ansConditionText = "";
+
         // The logical answer string
-        $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+        //$ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+
+        foreach ($xml_question->children() as $child) {
+            $nodename = $child->getName();
+            if ($nodename == "OUTCOME" && $child['ID'] != 'wrong' && $child['ID'] != 'Always happens') {
+                $ansConditionText .= $child->CONDITION . ' ';
+            }
+        }
 
         // question text
         $qText = "";
 
         // array to hold all of the parsed cloze strings
         $cloze_answers = array();
-        
+
         // question answers
         $qanswers = array();
 
@@ -545,13 +552,13 @@ class qformat_qml extends qformat_default {
 
                     // Set the question format for this answer
                     $cloze_question_format .= $qtype;
-                    
+
                     // Add the correct answer text
                     $cloze_question_format .= "=" . $text;
-                    
+
                     // store the answer value for this question
                     $qanswers[] = $text;
-                    
+
                     // Close the answer bracket
                     $cloze_question_format .= '}';
 
@@ -560,10 +567,10 @@ class qformat_qml extends qformat_default {
                 }
             }
         }
-        
+
         // index to keep track of the current answer, used to build the question name
         $answer_index = 0;
-        
+
         // Loop used to build the question text and insert the already parsed
         // cloze question strings. Creates the question name.
         foreach ($xml_question->children() as $child) {
@@ -587,7 +594,7 @@ class qformat_qml extends qformat_default {
                 }
             }
         }
-        
+
         return array('text' => $qText, 'qname' => $qname);
     }
 
