@@ -354,7 +354,8 @@ class qformat_qml extends qformat_default {
                 $this->import_fib($xml_question, $qo, true);
             }
         } else {
-            $qo = $this->import_multi_answer_fib($xml_question, $qo);
+            $this->error("Not supported yet");
+            //$qo = $this->import_multi_answer_fib($xml_question, $qo);
         }
 
         return $qo;
@@ -384,7 +385,7 @@ class qformat_qml extends qformat_default {
 
         // How much is this answer worth for this question. 
         $qo->fraction[] = 1;
-        
+
         // loop the question object
         foreach ($xml_question->children() as $child) {
             // We only care about the answer node
@@ -423,25 +424,6 @@ class qformat_qml extends qformat_default {
         // This 'should' be the correct answer.
         $ansText = str_replace('"', "", $ansParts[3]);
 
-        // Build the answer string by adding each answer separated by a comma
-        // TODO - (FIX?) if the users knows part of the missing answer,
-        // but not the whole thing, they will get this question wrong.
-//        if ($parse_logical_ans_string) {
-//            $ansText = "";
-//            foreach ($ansParts as $ansPart) {
-//                if (strpos($ansPart, '"') !== FALSE) {
-//                    $text = str_replace('"', "", $ansPart);
-//
-//                    if (is_numeric($text) !== TRUE) {
-//                        $ansText .= $text . ',';
-//                    }
-//                }
-//            }
-//
-//            // Trim the far right comma from the answer text.
-//            $ansText = rtrim($ansText, ',');
-//        }
-
         // Currently this will only match exact answers regardless of what the
         // exported settings were.  (case-insensitive)                                
         // Set the value text as our correct answer.
@@ -456,14 +438,9 @@ class qformat_qml extends qformat_default {
         if ($qo->questiontext == "Fill in Blanks question") {
             $qo->name = substr($qText, 0, 20);
         }
-        
+
         // Assign the question text
         $qo->questiontext = $qText;
-
-        // Overwrite the question text for this queston type
-//        if ($isMultipleAns) {
-//            $qo->questiontext .= get_string('blankmultiquestionhint', 'qformat_qml');
-//        }
 
         return $qo;
     }
@@ -480,15 +457,21 @@ class qformat_qml extends qformat_default {
         // Parse QML text - import_fib basically does this, but we need to 
         // build the Cloze question string in the correct format.
         $questiontext = array();
-        $questiontext['text'] = $this->build_multianswer_string($xml_question);
+        
+        // array holding question data
+        $multi_ans_data = $this->build_multianswer_string($xml_question);
+        
+        // set the questiontext and format
+        $questiontext['text'] = $multi_ans_data['text'];
         $questiontext['format'] = FORMAT_MOODLE;
-
+        
         $qo = qtype_multianswer_extract_question($questiontext);
-
+        
+        // set values for the question
         $qo->qtype = 'multianswer';
         $qo->course = $this->course;
 
-        $qo->name = "FIB Multi Answer Question";
+        $qo->name = $multi_ans_data['qname'];
         $qo->questiontextformat = 0;
         $qo->questiontext = $qo->questiontext['text'];
 
@@ -497,12 +480,115 @@ class qformat_qml extends qformat_default {
         $qo->length = 1;
         $qo->penalty = 0.3333333;
 
-
         return $qo;
     }
 
     private function build_multianswer_string($xml_question) {
-        return 'The capital of France is {1:SHORTANSWER:%100%Paris#Congratulations!~%50%Marseille#No, that is the second largest city in France (after Paris).~*#Wrong answer. The capital of France is Paris, of course.}';
+        
+        // string to hold the question name, used by the calling function
+        $qname = "";
+        
+        // The question type
+        $qtype = ":SHORTANSWER:";
+
+        // The logical answer string
+        $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+
+        // question text
+        $qText = "";
+
+        // array to hold all of the parsed cloze strings
+        $cloze_answers = array();
+        
+        // question answers
+        $qanswers = array();
+
+        /*  Cloze question key
+         *  { start the cloze sub-question with a bracket
+         *  INT define a grade for each cloze by a number (optional). This used for calculation of question grading.
+         *  :SHORTANSWER: define the type of cloze sub-question. Definition is bounded by ':'.
+         *  ~ is a seperator between answer options = marks a correct answer
+         *  # marks the beginning of an (optional) feedback message
+         *  } close the cloze sub-question at the end with a bracket (AltGr+0)
+         *
+         *   Example of Cloze question string
+         *   'The capital of France is
+         *   {
+         *      1
+         *      :SHORTANSWER:
+         *      %100%Paris
+         *      #Congratulations!
+         *      ~
+         *      %50%Marseille
+         *      #No, that is the second largest city in France (after Paris).
+         *      ~
+         *      *
+         *      #Wrong answer. The capital of France is Paris, of course.
+         *   }';
+         */
+
+        // Split the string up by the space character
+        $ansParts = explode(" ", (string) $ansConditionText);
+
+        // Loop used to iterate the logical condition answer string and build
+        // up each of the cloze answer strings.
+        foreach ($ansParts as $ansPart) {
+            if (strpos($ansPart, '"') !== FALSE) {
+                $text = str_replace('"', "", $ansPart);
+
+                if (is_numeric($text) !== TRUE) {
+                    // Start the answer
+                    $cloze_question_format = '{';
+
+                    // Set the grade for this answer
+                    $cloze_question_format .= 1;
+
+                    // Set the question format for this answer
+                    $cloze_question_format .= $qtype;
+                    
+                    // Add the correct answer text
+                    $cloze_question_format .= "=" . $text;
+                    
+                    // store the answer value for this question
+                    $qanswers[] = $text;
+                    
+                    // Close the answer bracket
+                    $cloze_question_format .= '}';
+
+                    // Add the parsed string to the array
+                    $cloze_answers[] = $cloze_question_format;
+                }
+            }
+        }
+        
+        // index to keep track of the current answer, used to build the question name
+        $answer_index = 0;
+        
+        // Loop used to build the question text and insert the already parsed
+        // cloze question strings. Creates the question name.
+        foreach ($xml_question->children() as $child) {
+            // We only care about the answer node
+            if ($child->getName() == "ANSWER") {
+                foreach ($child->children() as $ansChild) {
+
+                    // Append the text contained in this Answer->Content node
+                    if ($ansChild->getName() == "CONTENT") {
+                        $qText .= (string) $ansChild;
+                        $qname .= (string) $ansChild;
+                    }
+
+                    // Append the parsed cloze string to mark the "blank"
+                    // i.e. to show there is a blank that should go here
+                    if ($ansChild->getName() == "CHOICE") {
+                        $qText .= " {$cloze_answers[$answer_index]} ";
+                        $qname .= " {{$qanswers[$answer_index]}} ";
+                        ++$answer_index;
+                    }
+                }
+            }
+        }
+        
+        return array('text' => $qText, 'qname' => $qname);
     }
 
     /**
