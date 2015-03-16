@@ -11,6 +11,7 @@
 * Multiple Choice (MC)
 * True or False (TF)
 
+*FIB questions will either be a short answer question or they will be converted into a Embedded Answers (Cloze) question type.
 ### Other question types (Unsupported) ###
 * HOT
 * SEL
@@ -22,5 +23,3 @@
 * MAT
 * NUM
 * ESSAY
-
-*FIB questions will either be a short answer question or they will be converted into a Embedded Answers (Cloze) question type.
