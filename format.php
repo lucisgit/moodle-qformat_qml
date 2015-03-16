@@ -102,8 +102,14 @@ class qformat_qml extends qformat_default {
         //initalise question object
         $qo = $this->defaultquestion();
 
-        $qText = trim((string) $xml_question['DESCRIPTION']);
-        $qo->name = $qText;
+        $qText = trim((string) $xml_question->CONTENT);
+        $qName = trim((string) $xml_question['DESCRIPTION']);
+        
+        if(strlen($qName) == 0) {
+            $qName = $qText;
+        }
+        
+        $qo->name = $qName;
         $qo->questiontext = $qText;
         $qo->questiontextformat = 0; // moodle_auto_format
         $qo->generalfeedback = "";
