@@ -13,13 +13,13 @@
 
 *FIB questions will either be a short answer question or they will be converted into a Embedded Answers (Cloze) question type.
 ### Other question types (Unsupported) ###
-* HOT
-* SEL
-* SAB
-* TM
-* RANK
-* LKS
-* MATCH
-* MAT
-* NUM
-* ESSAY
+* Hotspot (HOT)
+* ? SEL
+* Select-a-blank (SAB)
+* ? TM
+* Ranking: Rank in Order (RANK)
+* Likert Scale (LKS)
+* ? Word Response ? (MATCH)
+* ? (MAT)
+* Numeric Question (NUM)
+* Essay Question (ESSAY)
