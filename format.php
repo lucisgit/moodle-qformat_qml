@@ -22,7 +22,6 @@
  * @copyright  2015, Lancaster University ISS
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
 defined('MOODLE_INTERNAL') || die();
 
 class qformat_qml extends qformat_default {
@@ -103,8 +102,14 @@ class qformat_qml extends qformat_default {
         //initalise question object
         $qo = $this->defaultquestion();
 
-        $qText = trim((string) $xml_question['DESCRIPTION']);
-        $qo->name = $qText;
+        $qText = trim((string) $xml_question->CONTENT);
+        $qName = trim((string) $xml_question['DESCRIPTION']);
+        
+        if(strlen($qName) == 0) {
+            $qName = $qText;
+        }
+        
+        $qo->name = $qName;
         $qo->questiontext = $qText;
         $qo->questiontextformat = 0; // moodle_auto_format
         $qo->generalfeedback = "";
@@ -146,21 +151,21 @@ class qformat_qml extends qformat_default {
 
         // Answer count
         $acount = 0;
-        
+
         // Answer text
         $ansText = "";
-        
+
         // Array holding to hold the correct answer fractions
         $ansCondition = array();
 
         $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
 
-        // It is possible that this text will be: "0" or "1" this is not currently supported.
-        // We want a condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
+        // It is possible that this text will be: "0" or "1", but we want a
+        // condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
         if (strlen($ansConditionText) <= 3) {
             $ansConditionText = $this->build_logical_answer_string($xml_question);
         }
-        
+
         // Parse the logical answer string into an array of fractions
         $ansCondition = $this->parse_answer_condition($ansConditionText);
 
@@ -168,7 +173,7 @@ class qformat_qml extends qformat_default {
         $qo->correctfeedback = array("text" => "Correct", "format" => FORMAT_MOODLE);
         $qo->partiallycorrectfeedback = array("text" => "Partly Correct", "format" => FORMAT_MOODLE);
         $qo->incorrectfeedback = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
-        
+
         // Loop the answers and set the correct fraction and default feedback for each
         foreach ($xml_question->children() as $child) {
             if ($child->getName() == "ANSWER") {
@@ -207,17 +212,17 @@ class qformat_qml extends qformat_default {
 
         foreach ($xml_question->children() as $child) {
             if ($child->getName() == "OUTCOME") {
-                
-                if($child['SCORE'] == 0) {
-                    $ans_string .= "NOT ";  
+
+                if ($child['SCORE'] == 0) {
+                    $ans_string .= "NOT ";
                 }
-                
-                $ans_string .= '"'. $acount . '"' . ' ';
+
+                $ans_string .= '"' . $acount . '"' . ' ';
             }
-            
+
             ++$acount;
         }
-        
+
         return $ans_string;
     }
 
@@ -336,28 +341,19 @@ class qformat_qml extends qformat_default {
         // Header parts particular to shortanswer.
         $qo->qtype = 'shortanswer';
 
-        // Each blank answer from Questionmark can have it's own case setting
-        // moodle only supports a single setting per shortanswer question
-        $qo->usecase = 0; // Ignore case for all FIB questions. ^^
-        // Find out what type of FIB question we are dealing with
-        // e.g. Does the question have one answer or multiple blanks to answer
-        // A single answer question has the outcome ID of "right"
+        // Ignore case for all FIB questions.
+        $qo->usecase = 0;
+
+        // Find out if the question has a single condition string
+        // fib_type = "right" means that the condition string is not in more
+        // than one part.
         $fib_type = $xml_question->OUTCOME[0]["ID"];
+        $has_multi_answer = strpos((string) $xml_question->OUTCOME->CONDITION, "AND") !== FALSE;
 
-        if ($fib_type == "right") {
-            //The question can still have multiple blanks, but only a single score
-            $multi_answer = strpos((string) $xml_question->OUTCOME->CONDITION, "AND");
-
-            if ($multi_answer !== FALSE) {
-                $qo = $this->import_fib($xml_question, $qo, true);
-            } else {
-                $qo = $this->import_fib($xml_question, $qo, false);
-            }
-        } else if ($fib_type == 0) {
-            //$this->import_multi_score_fib($xml_question, $qo);
-            $this->error("This question type (multiple score per blank) is not supported yet.");
+        if ($has_multi_answer || $fib_type == 0) {
+            $qo = $this->import_multi_answer_fib($xml_question, $qo);
         } else {
-            $this->error("Unable to determine question type");
+            $this->import_fib($xml_question, $qo, true);
         }
 
         return $qo;
@@ -370,34 +366,49 @@ class qformat_qml extends qformat_default {
      * @param boolean true if this question has multiple 'blanks' in it's answer
      * @return object the modified question object
      */
-    private function import_fib($xml_question, $qo, $isMultipleAns) {
+    private function import_fib($xml_question, $qo) {
 
         $qText = "";
         $ansText = "";
+        $correct_ans_feedback = "";
+        $incorrect_ans_feedback = "";
+        $ansConditionText = "";
 
         $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
-
         $correct_ans_feedback = (string) $xml_question->OUTCOME[0]->CONTENT;
         $incorrect_ans_feedback = (string) $xml_question->OUTCOME[1]->CONTENT;
+
         $qo->feedback[] = array("text" => $correct_ans_feedback, "format" => FORMAT_MOODLE);
         $qo->feedback[] = array("text" => $incorrect_ans_feedback, "format" => FORMAT_MOODLE);
 
         // How much is this answer worth for this question. 
         $qo->fraction[] = 1;
 
+        // loop the question object
         foreach ($xml_question->children() as $child) {
-            // Get the ID of the first choice node
+            // We only care about the answer node
             if ($child->getName() == "ANSWER") {
                 foreach ($child->children() as $ansChild) {
-                    if ($ansChild->getName() == "CHOICE") {
-                        $qText .= ' _ ';
-                    }
 
+                    // Append the text contained in this Answer->Content node
                     if ($ansChild->getName() == "CONTENT") {
                         $qText .= (string) $ansChild;
                     }
+
+                    // Append a _ character instead of the answer
+                    // i.e. to show there is a blank that should go here
+                    if ($ansChild->getName() == "CHOICE") {
+                        $qText .= ' _ ';
+                    }
                 }
             }
+
+            // What is this doing?
+//            if ($child->getName() == "OUTCOME") {
+//                if ($child['ID'] != "Always happens") {
+//                    $ansConditionText .= (string) $child->CONDITION . " ";
+//                }
+//            }
         }
 
         // The CONDITION text has 5 parts
@@ -408,47 +419,26 @@ class qformat_qml extends qformat_default {
         $ansParts = explode(" ", (string) $ansConditionText);
 
         // TODO - Test to ensure that the correct answer will always be found at the 3rd index
+        // This 'should' be the correct answer.
         $ansText = str_replace('"', "", $ansParts[3]);
-
-        // Build the answer string by adding each answer separated by a comma
-        if ($isMultipleAns) {
-            $ansText = "";
-            foreach ($ansParts as $ansPart) {
-                if (strpos($ansPart, '"') !== FALSE) {
-                    $text = str_replace('"', "", $ansPart);
-
-                    if (is_numeric($text) !== TRUE) {
-                        $ansText .= $text . ',';
-                    }
-                }
-            }
-
-            // Trim the far right comma from the answer text.
-            $ansText = rtrim($ansText, ',');
-        }
 
         // Currently this will only match exact answers regardless of what the
         // exported settings were.  (case-insensitive)                                
         // Set the value text as our correct answer.
         $qo->answer[] = $ansText;
 
-        //Questionmark FIB questions can have multiple "blanks", moodle doesn't support
-        //this question type by default
-        //Current solution is to seperate answers via a comma e.g "THE BLANK1,BLANK2"
-
+        // Clean the text
         $qText = addslashes(trim((string) $qText));
 
         // Try to overwrite the generic question name with something more descriptive
+        // Not nessesary, but a lot of the test files had generic names, this
+        // will replace that with part of the question text.
         if ($qo->questiontext == "Fill in Blanks question") {
-            $qo->name = $qText;
+            $qo->name = substr($qText, 0, 20);
         }
 
+        // Assign the question text
         $qo->questiontext = $qText;
-
-        // Overwrite the question text for this queston type
-        if ($isMultipleAns) {
-            $qo->questiontext .= get_string('blankmultiquestionhint', 'qformat_qml');
-        }
 
         return $qo;
     }
@@ -459,8 +449,159 @@ class qformat_qml extends qformat_default {
      * @param object a partly populated question object to work with
      * @return object the modified question object
      */
-    private function import_multi_score_fib($xml_question, $qo) {
-        
+    private function import_multi_answer_fib($xml_question, $qo) {
+        question_bank::get_qtype('multianswer');
+
+        // Parse QML text - import_fib basically does this, but we need to 
+        // build the Cloze question string in the correct format.
+        $questiontext = array();
+
+        // array holding question data
+        $multi_ans_data = $this->build_multianswer_string($xml_question);
+
+        // set the questiontext and format
+        $questiontext['text'] = $multi_ans_data['text'];
+        $questiontext['format'] = FORMAT_MOODLE;
+
+        $qo = qtype_multianswer_extract_question($questiontext);
+
+        // set values for the question
+        $qo->qtype = 'multianswer';
+        $qo->course = $this->course;
+
+        $qo->name = $multi_ans_data['qname'];
+        $qo->questiontextformat = 0;
+        $qo->questiontext = $qo->questiontext['text'];
+
+        $qo->generalfeedback = '';
+        $qo->generalfeedbackformat = FORMAT_MOODLE;
+        $qo->length = 1;
+        $qo->penalty = 0.3333333;
+
+        return $qo;
+    }
+
+    /**
+     * Builds the Cloze question text string and the question name
+     * @param SimpleXML_Object xml object containing the question data
+     * @param boolean true if this question is a Questionmark multi score FIB
+     * @return array an array containing the questiontext and question name
+     */
+    private function build_multianswer_string($xml_question) {
+
+        // string to hold the question name, used by the calling function
+        $qname = "";
+
+        // The question type
+        $qtype = ":SHORTANSWER:";
+
+        $ansConditionText = "";
+
+        // The logical answer string
+        //$ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+
+        foreach ($xml_question->children() as $child) {
+            $nodename = $child->getName();
+            if ($nodename == "OUTCOME" && $child['ID'] != 'wrong' && $child['ID'] != 'Always happens') {
+                $ansConditionText .= $child->CONDITION . ' ';
+            }
+        }
+
+        // question text
+        $qText = "";
+
+        // array to hold all of the parsed cloze strings
+        $cloze_answers = array();
+
+        // question answers
+        $qanswers = array();
+
+        /*  Cloze question key
+         *  { start the cloze sub-question with a bracket
+         *  INT define a grade for each cloze by a number (optional). This used for calculation of question grading.
+         *  :SHORTANSWER: define the type of cloze sub-question. Definition is bounded by ':'.
+         *  ~ is a seperator between answer options = marks a correct answer
+         *  # marks the beginning of an (optional) feedback message
+         *  } close the cloze sub-question at the end with a bracket (AltGr+0)
+         *
+         *   Example of Cloze question string
+         *   'The capital of France is
+         *   {
+         *      1
+         *      :SHORTANSWER:
+         *      %100%Paris
+         *      #Congratulations!
+         *      ~
+         *      %50%Marseille
+         *      #No, that is the second largest city in France (after Paris).
+         *      ~
+         *      *
+         *      #Wrong answer. The capital of France is Paris, of course.
+         *   }';
+         */
+
+        // Split the string up by the space character
+        $ansParts = explode(" ", (string) $ansConditionText);
+
+        // Loop used to iterate the logical condition answer string and build
+        // up each of the cloze answer strings.
+        foreach ($ansParts as $ansPart) {
+            if (strpos($ansPart, '"') !== FALSE) {
+                $text = str_replace('"', "", $ansPart);
+
+                if (is_numeric($text) !== TRUE) {
+                    // Start the answer
+                    $cloze_question_format = '{';
+
+                    // Set the grade for this answer
+                    $cloze_question_format .= 1;
+
+                    // Set the question format for this answer
+                    $cloze_question_format .= $qtype;
+
+                    // Add the correct answer text
+                    $cloze_question_format .= "=" . $text;
+
+                    // store the answer value for this question
+                    $qanswers[] = $text;
+
+                    // Close the answer bracket
+                    $cloze_question_format .= '}';
+
+                    // Add the parsed string to the array
+                    $cloze_answers[] = $cloze_question_format;
+                }
+            }
+        }
+
+        // index to keep track of the current answer, used to build the question name
+        $answer_index = 0;
+
+        // Loop used to build the question text and insert the already parsed
+        // cloze question strings. Creates the question name.
+        foreach ($xml_question->children() as $child) {
+            // We only care about the answer node
+            if ($child->getName() == "ANSWER") {
+                foreach ($child->children() as $ansChild) {
+
+                    // Append the text contained in this Answer->Content node
+                    if ($ansChild->getName() == "CONTENT") {
+                        $qText .= (string) $ansChild;
+                        $qname .= (string) $ansChild;
+                    }
+
+                    // Append the parsed cloze string to mark the "blank"
+                    // i.e. to show there is a blank that should go here
+                    if ($ansChild->getName() == "CHOICE") {
+                        $qText .= " {$cloze_answers[$answer_index]} ";
+                        $qname .= " {{$qanswers[$answer_index]}} ";
+                        ++$answer_index;
+                    }
+                }
+            }
+        }
+
+        return array('text' => $qText, 'qname' => $qname);
     }
 
     /**
