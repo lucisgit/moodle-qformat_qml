@@ -77,6 +77,9 @@ class qformat_qml extends qformat_default {
                 case "shortanswer":
                     $qo = $this->import_shortanswer($xml_question);
                     break;
+                case "essay":
+                    $qo = $this->import_essay($xml_question);
+                    break;
                 default:
                     $qtstr = (string) $question_type;
                     $this->error(get_string('unknownquestiontype', 'qformat_qml', $qtstr));
@@ -104,11 +107,11 @@ class qformat_qml extends qformat_default {
 
         $qText = trim((string) $xml_question->CONTENT);
         $qName = trim((string) $xml_question['DESCRIPTION']);
-        
-        if(strlen($qName) == 0) {
+
+        if (strlen($qName) == 0) {
             $qName = $qText;
         }
-        
+
         $qo->name = $qName;
         $qo->questiontext = $qText;
         $qo->questiontextformat = 0; // moodle_auto_format
@@ -130,6 +133,30 @@ class qformat_qml extends qformat_default {
                 echo get_string('contenttypenotset', 'qformat_qml');
                 $qo->questiontextformat = 1; // html
         }
+
+        return $qo;
+    }
+
+    /**
+     * Import essay type question
+     * @param array question question array from xml tree
+     * @return object question object
+     */
+    public function import_essay($question) {
+        // Get common parts.
+        $qo = $this->import_headers($question);
+
+        // Header parts particular to essay.
+        $qo->qtype = 'essay';
+
+        $qo->responseformat = "editor";
+        $qo->responsefieldlines = 20;
+        $qo->responserequired = 1;
+        $qo->attachments = 0;
+        $qo->attachmentsrequired = 0;
+        $qo->graderinfo = array("text" => "", "format" => FORMAT_MOODLE);
+        $qo->responsetemplate['text'] = "";
+        $qo->responsetemplate['format'] = "";
 
         return $qo;
     }
@@ -350,10 +377,41 @@ class qformat_qml extends qformat_default {
         $fib_type = $xml_question->OUTCOME[0]["ID"];
         $has_multi_answer = strpos((string) $xml_question->OUTCOME->CONDITION, "AND") !== FALSE;
 
-        if ($has_multi_answer || $fib_type == 0) {
+        if ($has_multi_answer || $fib_type == "0") {
             $qo = $this->import_multi_answer_fib($xml_question, $qo);
+        } else if (!$has_multi_answer && $fib_type != "0") {
+            $qo = $this->import_textmatch($xml_question, $qo);
         } else {
-            $this->import_fib($xml_question, $qo, true);
+            $qo = $this->import_fib($xml_question, $qo, true);
+        }
+
+        return $qo;
+    }
+
+    /**
+     * Imports a textmatch question as a shortanswer
+     * @param SimpleXML_Object $xml_question the SimpleXML_Object question object
+     * @param object $qo the question object
+     * @return object returns the question object
+     */
+    private function import_textmatch($xml_question, $qo) {
+        $qText = addslashes(trim((string) $xml_question->CONTENT));
+
+        if (!empty($xml_question->OUTCOME[0])) {
+            $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+        }
+
+        if (isset($ansConditionText)) {
+            $ansText = $this->break_logical_ans_str($ansConditionText);
+            $qo->feedback[] = array("text" => "Correct", "format" => FORMAT_MOODLE);
+            $qo->feedback[] = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
+            $qo->fraction[] = 1;
+            $qo->answer[] = $ansText;
+            $qo->questiontext = $qText;
+        } else {
+            $this->error("Shortanswer questions with no correct answer are not"
+                    . " supported in moodle");
+            $qo = null;
         }
 
         return $qo;
@@ -411,16 +469,7 @@ class qformat_qml extends qformat_default {
 //            }
         }
 
-        // The CONDITION text has 5 parts
-        // NOT | Choices | Operation | Value | Boolean
-        // They can be conditionals e.g. a node may look like
-        // <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
-        // we only want to know the Value text to match against the users answer.
-        $ansParts = explode(" ", (string) $ansConditionText);
-
-        // TODO - Test to ensure that the correct answer will always be found at the 3rd index
-        // This 'should' be the correct answer.
-        $ansText = str_replace('"', "", $ansParts[3]);
+        $ansText = $this->break_logical_ans_str((string) $ansConditionText);
 
         // Currently this will only match exact answers regardless of what the
         // exported settings were.  (case-insensitive)                                
@@ -434,13 +483,28 @@ class qformat_qml extends qformat_default {
         // Not nessesary, but a lot of the test files had generic names, this
         // will replace that with part of the question text.
         if ($qo->questiontext == "Fill in Blanks question") {
-            $qo->name = substr($qText, 0, 20);
+            $qo->name = substr($qText, 0, 30);
         }
 
         // Assign the question text
         $qo->questiontext = $qText;
 
         return $qo;
+    }
+
+    private function break_logical_ans_str($logicalstr) {
+        // The CONDITION text has 5 parts
+        // NOT | Choices | Operation | Value | Boolean
+        // They can be conditionals e.g. a node may look like
+        // <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
+        // we only want to know the Value text to match against the users answer.
+        $ansParts = explode(" ", $logicalstr);
+
+        // TODO - Test to ensure that the correct answer will always be found at the 3rd index
+        // This 'should' be the correct answer.
+        $ansText = str_replace('"', "", $ansParts[3]);
+
+        return $ansText;
     }
 
     /**
@@ -620,7 +684,11 @@ class qformat_qml extends qformat_default {
                 $mdl_questiontype = "truefalse";
                 break;
             case "FIB":
+            case "TM":
                 $mdl_questiontype = "shortanswer";
+                break;
+            case "ESSAY":
+               $mdl_questiontype = "essay";
                 break;
             default :
                 $mdl_questiontype = $str_QTYPE;
