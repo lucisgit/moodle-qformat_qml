@@ -67,6 +67,16 @@ class qformat_qml extends qformat_default {
             $question_type = $this->get_question_type($xml_question->ANSWER['QTYPE']);
             $qo = null;
 
+            // Special case for certain question types
+            // Some FIB questions contained a numeric(NUM) question format, but the
+            // question type was set to be a FIB in the question header. For now 
+            // this case is handled here, it may be best to change the current question
+            // to a numeric question type in the future.
+//            if (strpos((string) $xml_question->OUTCOME[0]->CONDITION, '=') &&
+//                    $xml_question->ANSWER['QTYPE'] == "FIB") {
+//                $question_type = "numerical";
+//            }
+
             switch ($question_type) {
                 case "multichoice":
                     $qo = $this->import_multichoice($xml_question);
@@ -79,6 +89,9 @@ class qformat_qml extends qformat_default {
                     break;
                 case "essay":
                     $qo = $this->import_essay($xml_question);
+                    break;
+                case "numerical":
+                    $qo = $this->import_numerical($xml_question);
                     break;
                 default:
                     $qtstr = (string) $question_type;
@@ -111,6 +124,10 @@ class qformat_qml extends qformat_default {
         if (strlen($qName) == 0) {
             $qName = $qText;
         }
+        
+        if(strlen($qText) == 0) {
+            $qText = $qName;
+        }
 
         $qo->name = $qName;
         $qo->questiontext = $qText;
@@ -137,14 +154,50 @@ class qformat_qml extends qformat_default {
         return $qo;
     }
 
+    public function import_numerical($xml_question) {
+        // Get common parts.
+        $qo = $this->import_headers($xml_question);
+
+        // Header parts particular to numerical.
+        $qo->qtype = 'numerical';
+
+        $qo->answer = array();
+        $qo->feedback = array();
+        $qo->fraction = array();
+
+        $ans = substr((string) $xml_question->OUTCOME[0]->CONDITION, 5);
+        $qo->answer[] = $ans;
+
+        // TODO - work out if this is required
+        if (empty($qo->answer)) {
+            $qo->answer = '*';
+        }
+
+        $qo->feedback[] = array("text" => "", "format" => FORMAT_MOODLE);
+        $qo->tolerance[] = 0;
+
+        // Deprecated?
+        $qo->fraction[] = 1;
+
+        // Default moodles values are set for QML imported questions
+        $qo->unitgradingtype = 0;
+        $qo->unitpenalty = 0.1000000;
+        $qo->showunits = 3;
+        $qo->unitsleft = 0;
+        $qo->instructions['text'] = '';
+        $qo->instructions['format'] = FORMAT_HTML;
+
+        return $qo;
+    }
+
     /**
      * Import essay type question
      * @param array question question array from xml tree
      * @return object question object
      */
-    public function import_essay($question) {
+    public function import_essay($xml_question) {
         // Get common parts.
-        $qo = $this->import_headers($question);
+        $qo = $this->import_headers($xml_question);
 
         // Header parts particular to essay.
         $qo->qtype = 'essay';
@@ -187,7 +240,7 @@ class qformat_qml extends qformat_default {
 
         $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
 
-        // It is possible that this text will be: "0" or "1", but we want a
+        // It is possible that $ansConditionText will be: "0" or "1", but we want a
         // condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
         if (strlen($ansConditionText) <= 3) {
             $ansConditionText = $this->build_logical_answer_string($xml_question);
@@ -382,7 +435,7 @@ class qformat_qml extends qformat_default {
         } else if (!$has_multi_answer && $fib_type != "0") {
             $qo = $this->import_textmatch($xml_question, $qo);
         } else {
-            $qo = $this->import_fib($xml_question, $qo, true);
+            $qo = $this->import_fib($xml_question, $qo);
         }
 
         return $qo;
@@ -396,6 +449,18 @@ class qformat_qml extends qformat_default {
      */
     private function import_textmatch($xml_question, $qo) {
         $qText = addslashes(trim((string) $xml_question->CONTENT));
+        $ans_qtext = (string)$xml_question->ANSWER->CONTENT;
+        
+        if(strlen($qText) == 0){
+            $qText = (strlen($ans_qtext) > 0) ? $ans_qtext : "COULD NOT LOCATE QUESTION TEXT IN XML FILE";
+            // Display notice to user or consider this an error?
+        }
+        
+        if($qo->name == "Fill in Blanks question") {
+            $qo->name = $qText;
+        }
+        
+        $qo->questiontext = $qText;
 
         if (!empty($xml_question->OUTCOME[0])) {
             $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
@@ -407,7 +472,6 @@ class qformat_qml extends qformat_default {
             $qo->feedback[] = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
             $qo->fraction[] = 1;
             $qo->answer[] = $ansText;
-            $qo->questiontext = $qText;
         } else {
             $this->error("Shortanswer questions with no correct answer are not"
                     . " supported in moodle");
@@ -421,7 +485,6 @@ class qformat_qml extends qformat_default {
      * Import a fill in the blanks question
      * @param SimpleXML_Object xml object containing the question data
      * @param object a partly populated question object to work with
-     * @param boolean true if this question has multiple 'blanks' in it's answer
      * @return object the modified question object
      */
     private function import_fib($xml_question, $qo) {
@@ -567,7 +630,13 @@ class qformat_qml extends qformat_default {
         foreach ($xml_question->children() as $child) {
             $nodename = $child->getName();
             if ($nodename == "OUTCOME" && $child['ID'] != 'wrong' && $child['ID'] != 'Always happens') {
-                $ansConditionText .= $child->CONDITION . ' ';
+                $condition = (string) $child->CONDITION;
+
+                if (strpos($condition, '=')) {
+                    $condition = substr($condition, 5);
+                }
+
+                $ansConditionText .= $condition . ' ';
             }
         }
 
@@ -607,12 +676,22 @@ class qformat_qml extends qformat_default {
         // Split the string up by the space character
         $ansParts = explode(" ", (string) $ansConditionText);
 
+        echo '<pre>';
+        echo $ansConditionText;
+        var_dump($ansParts);
+
         // Loop used to iterate the logical condition answer string and build
         // up each of the cloze answer strings.
         foreach ($ansParts as $ansPart) {
+
             if (strpos($ansPart, '"') !== FALSE) {
                 $text = str_replace('"', "", $ansPart);
 
+                echo $ansPart . " ";
+
+                // TODO - This is wrong, some answers can be numeric, currently they
+                // are being ignored. Originally this was designed to ignore
+                // unused numeric meta data about the question.
                 if (is_numeric($text) !== TRUE) {
                     // Start the answer
                     $cloze_question_format = '{';
@@ -637,6 +716,9 @@ class qformat_qml extends qformat_default {
                 }
             }
         }
+
+        echo '<pre>';
+        var_dump($cloze_answers);
 
         // index to keep track of the current answer, used to build the question name
         $answer_index = 0;
@@ -664,8 +746,14 @@ class qformat_qml extends qformat_default {
                 }
             }
         }
-
-        return array('text' => $qText, 'qname' => $qname);
+        
+        if(strlen($qname) == 0) {
+            $qname = $qText;
+        }
+        
+        $qname = substr($qname, 0, 240);
+        
+        return array('text' => $qText, 'qname' => $qname . '...');
     }
 
     /**
@@ -688,7 +776,10 @@ class qformat_qml extends qformat_default {
                 $mdl_questiontype = "shortanswer";
                 break;
             case "ESSAY":
-               $mdl_questiontype = "essay";
+                $mdl_questiontype = "essay";
+                break;
+            case "NUM":
+                $mdl_questiontype = "numerical";
                 break;
             default :
                 $mdl_questiontype = $str_QTYPE;
