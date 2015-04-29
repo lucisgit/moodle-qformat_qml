@@ -57,15 +57,25 @@ class qformat_qml extends qformat_default {
      * @param SimpleXML_Object contains the question data in a SimpleXML_Object
      * @return array an array of question objects
      */
-    public function readquestions($sxmlref) {
+    //array to hold the questions
+    public $questions = array();
 
-        //array to hold the questions
-        $questions = array();
+    public function readquestions($sxmlref) {
 
         //Iterate through simple_xml question objects
         foreach ($sxmlref as $xml_question) {
             $question_type = $this->get_question_type($xml_question->ANSWER['QTYPE']);
             $qo = null;
+
+            // Special case for certain question types
+            // Some FIB questions contained a numeric(NUM) question format, but the
+            // question type was set to be a FIB in the question header. For now 
+            // this case is handled here, it may be best to change the current question
+            // to a numeric question type in the future.
+//            if (strpos((string) $xml_question->OUTCOME[0]->CONDITION, '=') &&
+//                    $xml_question->ANSWER['QTYPE'] == "FIB") {
+//                $question_type = "numerical";
+//            }
 
             switch ($question_type) {
                 case "multichoice":
@@ -77,6 +87,12 @@ class qformat_qml extends qformat_default {
                 case "shortanswer":
                     $qo = $this->import_shortanswer($xml_question);
                     break;
+                case "essay":
+                    $qo = $this->import_essay($xml_question);
+                    break;
+                case "numerical":
+                    $qo = $this->import_numerical($xml_question);
+                    break;
                 default:
                     $qtstr = (string) $question_type;
                     $this->error(get_string('unknownquestiontype', 'qformat_qml', $qtstr));
@@ -86,11 +102,11 @@ class qformat_qml extends qformat_default {
             // Add the result into the $questions array
             if ($qo) {
                 $qo->generalfeedback = '';
-                $questions[] = $qo;
+                $this->questions[] = $qo;
             }
         }
 
-        return $questions;
+        return $this->questions;
     }
 
     /**
@@ -104,17 +120,23 @@ class qformat_qml extends qformat_default {
 
         $qText = trim((string) $xml_question->CONTENT);
         $qName = trim((string) $xml_question['DESCRIPTION']);
-        
-        if(strlen($qName) == 0) {
+
+        if (strlen($qName) == 0) {
             $qName = $qText;
         }
-        
+
+        if (strlen($qText) == 0) {
+            $qText = $qName;
+        }
+
         $qo->name = $qName;
         $qo->questiontext = $qText;
         $qo->questiontextformat = 0; // moodle_auto_format
         $qo->generalfeedback = "";
         $qo->generalfeedbackformat = 1;
         $qo->feedbackformat = FORMAT_MOODLE;
+
+        $qo->category = $this->import_category($xml_question);
 
         //get the content type for this question
         $content_type = (string) $xml_question->CONTENT['TYPE'];
@@ -130,6 +152,74 @@ class qformat_qml extends qformat_default {
                 echo get_string('contenttypenotset', 'qformat_qml');
                 $qo->questiontextformat = 1; // html
         }
+
+        return $qo;
+    }
+
+    public function import_category($xml_question) {
+        $qo = new stdClass();
+        $qo->qtype = 'category';
+        $qo->category = (string) $xml_question["TOPIC"];
+        $this->questions[] = $qo;
+        return $qo->category;
+    }
+
+    public function import_numerical($xml_question) {
+        // Get common parts.
+        $qo = $this->import_headers($xml_question);
+
+        // Header parts particular to numerical.
+        $qo->qtype = 'numerical';
+
+        $qo->answer = array();
+        $qo->feedback = array();
+        $qo->fraction = array();
+
+        $ans = substr((string) $xml_question->OUTCOME[0]->CONDITION, 5);
+        $qo->answer[] = $ans;
+
+        // TODO - work out if this is required
+        if (empty($qo->answer)) {
+            $qo->answer = '*';
+        }
+
+        $qo->feedback[] = array("text" => "", "format" => FORMAT_MOODLE);
+        $qo->tolerance[] = 0;
+
+        // Deprecated?
+        $qo->fraction[] = 1;
+
+        // Default moodles values are set for QML imported questions
+        $qo->unitgradingtype = 0;
+        $qo->unitpenalty = 0.1000000;
+        $qo->showunits = 3;
+        $qo->unitsleft = 0;
+        $qo->instructions['text'] = '';
+        $qo->instructions['format'] = FORMAT_HTML;
+
+        return $qo;
+    }
+
+    /**
+     * Import essay type question
+     * @param array question question array from xml tree
+     * @return object question object
+     */
+    public function import_essay($xml_question) {
+        // Get common parts.
+        $qo = $this->import_headers($xml_question);
+
+        // Header parts particular to essay.
+        $qo->qtype = 'essay';
+
+        $qo->responseformat = "editor";
+        $qo->responsefieldlines = 20;
+        $qo->responserequired = 1;
+        $qo->attachments = 0;
+        $qo->attachmentsrequired = 0;
+        $qo->graderinfo = array("text" => "", "format" => FORMAT_MOODLE);
+        $qo->responsetemplate['text'] = "";
+        $qo->responsetemplate['format'] = "";
 
         return $qo;
     }
@@ -160,7 +250,7 @@ class qformat_qml extends qformat_default {
 
         $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
 
-        // It is possible that this text will be: "0" or "1", but we want a
+        // It is possible that $ansConditionText will be: "0" or "1", but we want a
         // condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
         if (strlen($ansConditionText) <= 3) {
             $ansConditionText = $this->build_logical_answer_string($xml_question);
@@ -350,10 +440,56 @@ class qformat_qml extends qformat_default {
         $fib_type = $xml_question->OUTCOME[0]["ID"];
         $has_multi_answer = strpos((string) $xml_question->OUTCOME->CONDITION, "AND") !== FALSE;
 
-        if ($has_multi_answer || $fib_type == 0) {
+        if ($has_multi_answer || $fib_type == "0") {
             $qo = $this->import_multi_answer_fib($xml_question, $qo);
+        } else if (!$has_multi_answer && $fib_type != "0") {
+            $qo = $this->import_textmatch($xml_question, $qo);
         } else {
-            $this->import_fib($xml_question, $qo, true);
+            $qo = $this->import_fib($xml_question, $qo);
+        }
+
+        return $qo;
+    }
+
+    /**
+     * Imports a textmatch question as a shortanswer
+     * @param SimpleXML_Object $xml_question the SimpleXML_Object question object
+     * @param object $qo the question object
+     * @return object returns the question object
+     */
+    private function import_textmatch($xml_question, $qo) {
+        $qText = addslashes(trim((string) $xml_question->CONTENT));
+        $ans_qtext = (string) $xml_question->ANSWER->CONTENT;
+
+        if (strlen($qText) == 0) {
+            $qText = (strlen($ans_qtext) > 0) ? $ans_qtext : "COULD NOT LOCATE QUESTION TEXT IN XML FILE";
+            // Display notice to user or consider this an error?
+        }
+
+        if ($qo->name == "Fill in Blanks question") {
+            $qo->name = $qText;
+        }
+
+        $qo->questiontext = $qText;
+
+        if (!empty($xml_question->OUTCOME[0])) {
+            $ansConditionText = (string) $xml_question->OUTCOME[0]->CONDITION;
+        }
+
+        if (isset($ansConditionText)) {
+            if (strpos($ansConditionText, '=') !== FALSE) {
+                $ansText = substr($ansConditionText, 5);
+            } else {
+                $ansText = $this->break_logical_ans_str($ansConditionText);
+            }
+            $qo->feedback[] = array("text" => "Correct", "format" => FORMAT_MOODLE);
+            $qo->feedback[] = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
+            $qo->fraction[] = 1;
+            $qo->answer[] = trim($ansText);
+        } else {
+            $this->error("Shortanswer questions with no correct answer are not"
+                    . " supported in moodle");
+            $qo = null;
         }
 
         return $qo;
@@ -363,7 +499,6 @@ class qformat_qml extends qformat_default {
      * Import a fill in the blanks question
      * @param SimpleXML_Object xml object containing the question data
      * @param object a partly populated question object to work with
-     * @param boolean true if this question has multiple 'blanks' in it's answer
      * @return object the modified question object
      */
     private function import_fib($xml_question, $qo) {
@@ -411,16 +546,7 @@ class qformat_qml extends qformat_default {
 //            }
         }
 
-        // The CONDITION text has 5 parts
-        // NOT | Choices | Operation | Value | Boolean
-        // They can be conditionals e.g. a node may look like
-        // <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
-        // we only want to know the Value text to match against the users answer.
-        $ansParts = explode(" ", (string) $ansConditionText);
-
-        // TODO - Test to ensure that the correct answer will always be found at the 3rd index
-        // This 'should' be the correct answer.
-        $ansText = str_replace('"', "", $ansParts[3]);
+        $ansText = $this->break_logical_ans_str((string) $ansConditionText);
 
         // Currently this will only match exact answers regardless of what the
         // exported settings were.  (case-insensitive)                                
@@ -434,13 +560,28 @@ class qformat_qml extends qformat_default {
         // Not nessesary, but a lot of the test files had generic names, this
         // will replace that with part of the question text.
         if ($qo->questiontext == "Fill in Blanks question") {
-            $qo->name = substr($qText, 0, 20);
+            $qo->name = substr($qText, 0, 30);
         }
 
         // Assign the question text
         $qo->questiontext = $qText;
 
         return $qo;
+    }
+
+    private function break_logical_ans_str($logicalstr) {
+        // The CONDITION text has 5 parts
+        // NOT | Choices | Operation | Value | Boolean
+        // They can be conditionals e.g. a node may look like
+        // <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
+        // we only want to know the Value text to match against the users answer.
+        $ansParts = explode(" ", $logicalstr);
+
+        // TODO - Test to ensure that the correct answer will always be found at the 3rd index
+        // This 'should' be the correct answer.
+        $ansText = str_replace('"', "", $ansParts[3]);
+
+        return $ansText;
     }
 
     /**
@@ -489,6 +630,8 @@ class qformat_qml extends qformat_default {
      */
     private function build_multianswer_string($xml_question) {
 
+        $ignored = array("MATCHES", "NOCASE", "NEAR", "AND", "OR");
+
         // string to hold the question name, used by the calling function
         $qname = "";
 
@@ -503,7 +646,13 @@ class qformat_qml extends qformat_default {
         foreach ($xml_question->children() as $child) {
             $nodename = $child->getName();
             if ($nodename == "OUTCOME" && $child['ID'] != 'wrong' && $child['ID'] != 'Always happens') {
-                $ansConditionText .= $child->CONDITION . ' ';
+                $condition = (string) $child->CONDITION;
+
+                if (strpos($condition, '=')) {
+                    $condition = substr($condition, 5);
+                }
+
+                $ansConditionText .= $condition . ' ';
             }
         }
 
@@ -540,38 +689,58 @@ class qformat_qml extends qformat_default {
          *   }';
          */
 
+        echo '<pre>';
+        echo $ansConditionText;
+
         // Split the string up by the space character
         $ansParts = explode(" ", (string) $ansConditionText);
 
         // Loop used to iterate the logical condition answer string and build
         // up each of the cloze answer strings.
         foreach ($ansParts as $ansPart) {
-            if (strpos($ansPart, '"') !== FALSE) {
-                $text = str_replace('"', "", $ansPart);
 
-                if (is_numeric($text) !== TRUE) {
-                    // Start the answer
-                    $cloze_question_format = '{';
+            $text = str_replace('"', "", $ansPart);
 
-                    // Set the grade for this answer
-                    $cloze_question_format .= 1;
-
-                    // Set the question format for this answer
-                    $cloze_question_format .= $qtype;
-
-                    // Add the correct answer text
-                    $cloze_question_format .= "=" . $text;
-
-                    // store the answer value for this question
-                    $qanswers[] = $text;
-
-                    // Close the answer bracket
-                    $cloze_question_format .= '}';
-
-                    // Add the parsed string to the array
-                    $cloze_answers[] = $cloze_question_format;
+            // TODO - This is wrong, some answers can be numeric, currently they
+            // are being ignored. Originally this was designed to ignore
+            // unused numeric meta data about the question.
+            // If we have a "MATCHES" in the answer condition string, we then ignore numerical answers - TESTING
+            if (strpos($ansConditionText, "MATCHES") !== FALSE) {
+                if (is_numeric($text)) {
+                    continue;
                 }
             }
+            
+            // ignore answer condition data, otherwise this could be considered the answer
+            if (in_array($text, $ignored)) {
+                continue;
+            }
+            
+            // ignore empty strings
+            if (empty($text)) {
+                continue;
+            }
+
+            // Start the answer
+            $cloze_question_format = '{';
+
+            // Set the grade for this answer
+            $cloze_question_format .= 1;
+
+            // Set the question format for this answer
+            $cloze_question_format .= $qtype;
+
+            // Add the correct answer text
+            $cloze_question_format .= "=" . $text;
+
+            // store the answer value for this question
+            $qanswers[] = $text;
+
+            // Close the answer bracket
+            $cloze_question_format .= '}';
+
+            // Add the parsed string to the array
+            $cloze_answers[] = $cloze_question_format;
         }
 
         // index to keep track of the current answer, used to build the question name
@@ -601,7 +770,13 @@ class qformat_qml extends qformat_default {
             }
         }
 
-        return array('text' => $qText, 'qname' => $qname);
+        if (strlen($qname) == 0) {
+            $qname = $qText;
+        }
+
+        $qname = substr($qname, 0, 240);
+
+        return array('text' => $qText, 'qname' => $qname . '...');
     }
 
     /**
@@ -620,7 +795,14 @@ class qformat_qml extends qformat_default {
                 $mdl_questiontype = "truefalse";
                 break;
             case "FIB":
+            case "TM":
                 $mdl_questiontype = "shortanswer";
+                break;
+            case "ESSAY":
+                $mdl_questiontype = "essay";
+                break;
+            case "NUM":
+                $mdl_questiontype = "numerical";
                 break;
             default :
                 $mdl_questiontype = $str_QTYPE;
