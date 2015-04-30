@@ -16,6 +16,7 @@
  
 /**
  * @package   qformat_xml
+ * @author    Tom McCracken <t27m@openmailbox.org>
  * @copyright 2015, Lancaster University ISS
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */

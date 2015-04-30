@@ -1,4 +1,5 @@
 <?php
+
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -18,10 +19,10 @@
  * Strings for component 'qformat_qml', language 'en', branch 'MOODLE_20_STABLE'
  *
  * @package    qformat_qml
+ * @author     Tom McCracken <t27m@openmailbox.org>
  * @copyright  2015, Lancaster University ISS
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
 $string['pluginname'] = 'Questionmark QML Importer';
 $string['pluginname_help'] = 'Imports supported Questionmark QML questions and converts them into the moodle equivalent.';
 $string['unknownquestiontype'] = 'Question type {$a} is not supported by QML import';
