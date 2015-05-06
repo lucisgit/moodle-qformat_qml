@@ -16,11 +16,12 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Code for importing Questionmark QML questions into Moodle.
+ * Code for importing Questionmark QML question data into Moodle.
  *
- * @package    qformat_qml
- * @copyright  2015, Lancaster University ISS
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package     qformat_qml
+ * @author      Tom McCracken <t27m@openmailbox.org>
+ * @copyright   2015, Lancaster University ISS
+ * @license     http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 defined('MOODLE_INTERNAL') || die();
 
@@ -66,16 +67,6 @@ class qformat_qml extends qformat_default {
         foreach ($sxmlref as $xml_question) {
             $question_type = $this->get_question_type($xml_question->ANSWER['QTYPE']);
             $qo = null;
-
-            // Special case for certain question types
-            // Some FIB questions contained a numeric(NUM) question format, but the
-            // question type was set to be a FIB in the question header. For now 
-            // this case is handled here, it may be best to change the current question
-            // to a numeric question type in the future.
-//            if (strpos((string) $xml_question->OUTCOME[0]->CONDITION, '=') &&
-//                    $xml_question->ANSWER['QTYPE'] == "FIB") {
-//                $question_type = "numerical";
-//            }
 
             switch ($question_type) {
                 case "multichoice":
@@ -537,13 +528,6 @@ class qformat_qml extends qformat_default {
                     }
                 }
             }
-
-            // What is this doing?
-//            if ($child->getName() == "OUTCOME") {
-//                if ($child['ID'] != "Always happens") {
-//                    $ansConditionText .= (string) $child->CONDITION . " ";
-//                }
-//            }
         }
 
         $ansText = $this->break_logical_ans_str((string) $ansConditionText);
@@ -689,9 +673,6 @@ class qformat_qml extends qformat_default {
          *   }';
          */
 
-        echo '<pre>';
-        echo $ansConditionText;
-
         // Split the string up by the space character
         $ansParts = explode(" ", (string) $ansConditionText);
 
@@ -701,21 +682,18 @@ class qformat_qml extends qformat_default {
 
             $text = str_replace('"', "", $ansPart);
 
-            // TODO - This is wrong, some answers can be numeric, currently they
-            // are being ignored. Originally this was designed to ignore
-            // unused numeric meta data about the question.
             // If we have a "MATCHES" in the answer condition string, we then ignore numerical answers - TESTING
             if (strpos($ansConditionText, "MATCHES") !== FALSE) {
                 if (is_numeric($text)) {
                     continue;
                 }
             }
-            
+
             // ignore answer condition data, otherwise this could be considered the answer
             if (in_array($text, $ignored)) {
                 continue;
             }
-            
+
             // ignore empty strings
             if (empty($text)) {
                 continue;
@@ -810,21 +788,6 @@ class qformat_qml extends qformat_default {
         }
 
         return $mdl_questiontype;
-    }
-
-    /**
-     * A recursive function to traverse the SimpleXML_Object
-     * @param SimpleXML_Object the xml object to traverse
-     */
-    private function display_xml($xml) {
-
-        foreach ($xml->children() as $child) {
-            foreach ($child->attributes() as $attr => $attrVal) {
-                if (!empty($child->children())) {
-                    $this->get_xml_entities($child);
-                }
-            }
-        }
     }
 
 }
