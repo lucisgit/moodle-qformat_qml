@@ -13,7 +13,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
- 
+
 /**
  * @package   qformat_xml
  * @author    Tom McCracken <t27m@openmailbox.org>
@@ -26,6 +26,6 @@ defined('MOODLE_INTERNAL') || die();
 $plugin->component = 'qformat_qml';
 
 $plugin->version   = 2015030601;
-$plugin->requires  = 2014051203; // 2.7.3
+$plugin->requires  = 2014051203; // 2.7.3.
 
 $plugin->maturity  = MATURITY_BETA;
