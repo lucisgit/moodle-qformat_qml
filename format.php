@@ -1,4 +1,5 @@
 <?php
+
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -249,7 +250,7 @@ class qformat_qml extends qformat_default {
         if (strlen($ansconditiontext) <= 3) {
             $ansconditiontext = $this->build_logical_answer_string($xmlquestion);
         }
-
+        
         // Parse the logical answer string into an array of fractions.
         $anscondition = $this->parse_answer_condition($ansconditiontext);
 
@@ -296,8 +297,8 @@ class qformat_qml extends qformat_default {
 
         foreach ($xmlquestion->children() as $child) {
             if ($child->getName() == "OUTCOME") {
-
-                if ($child['SCORE'] == 0) {
+                
+                if ($child['SCORE'] === 0 || $child["ADD"] == '-1') {
                     $ansstring .= "NOT ";
                 }
 
@@ -355,6 +356,7 @@ class qformat_qml extends qformat_default {
             }
         }
 
+        // TODO - Division by 0 on quesitons with ADD=1 BIOL WEEK 3
         // Calculate how much each correct answer is actually worth.
         $correctansworth = 1 / $correctanscount;
 
@@ -453,13 +455,19 @@ class qformat_qml extends qformat_default {
      * @return object returns the question object
      */
     private function import_textmatch($xmlquestion, $qo) {
-        $qtext = addslashes(trim((string) $xmlquestion->CONTENT));
-        $ansqtext = (string) $xmlquestion->ANSWER->CONTENT;
-
-        if (strlen($qtext) == 0) {
-            $qtext = (strlen($ansqtext) > 0) ? $ansqtext : "COULD NOT LOCATE QUESTION TEXT IN XML FILE";
-            // Display notice to user or consider this an error?
+        
+        $nodetext = "";
+        if (!empty($xmlquestion->CONTENT[0])) {
+            $nodetext = (string) $xmlquestion->CONTENT[0];
         }
+
+        if (strlen($nodetext) > 0) {
+            $qtext = (string) $xmlquestion->CONTENT[0];
+        } else {
+            $qtext = $this->get_question_text($xmlquestion);
+        }
+
+        $ansqtext = (string) $xmlquestion->ANSWER->CONTENT;
 
         if ($qo->name == "Fill in Blanks question") {
             $qo->name = $qtext;
@@ -498,8 +506,6 @@ class qformat_qml extends qformat_default {
      */
     private function import_fib($xmlquestion, $qo) {
 
-        $qtext = "";
-
         $ansconditiontext = (string) $xmlquestion->OUTCOME[0]->CONDITION;
         $correctansfeedback = (string) $xmlquestion->OUTCOME[0]->CONTENT;
         $incorrectansfeedback = (string) $xmlquestion->OUTCOME[1]->CONTENT;
@@ -510,26 +516,7 @@ class qformat_qml extends qformat_default {
         // How much is this answer worth for this question.
         $qo->fraction[] = 1;
 
-        // Loop the question object.
-        foreach ($xmlquestion->children() as $child) {
-            // We only care about the answer node.
-            if ($child->getName() == "ANSWER") {
-                foreach ($child->children() as $anschild) {
-
-                    // Append the text contained in this Answer->Content node.
-                    if ($anschild->getName() == "CONTENT") {
-                        $qtext .= (string) $anschild;
-                    }
-
-                    /* Append a _ character instead of the answer.
-                     * i.e. to show there is a blank that should go here.
-                     */
-                    if ($anschild->getName() == "CHOICE") {
-                        $qtext .= ' _ ';
-                    }
-                }
-            }
-        }
+        $qtext = $this->get_question_text($xmlquestion);
 
         $anstext = $this->break_logical_ans_str((string) $ansconditiontext);
 
@@ -554,6 +541,34 @@ class qformat_qml extends qformat_default {
         $qo->questiontext = $qtext;
 
         return $qo;
+    }
+
+    private function get_question_text($xmlquestion) {
+
+        $qtext = "";
+
+        // Loop the question object.
+        foreach ($xmlquestion->children() as $child) {
+            // We only care about the answer node.
+            if ($child->getName() == "ANSWER") {
+                foreach ($child->children() as $anschild) {
+
+                    // Append the text contained in this Answer->Content node.
+                    if ($anschild->getName() == "CONTENT") {
+                        $qtext .= (string) $anschild;
+                    }
+
+                    /* Append a _ character instead of the answer.
+                     * i.e. to show there is a blank that should go here.
+                     */
+                    if ($anschild->getName() == "CHOICE") {
+                        $qtext .= ' _ ';
+                    }
+                }
+            }
+        }
+
+        return $qtext;
     }
 
     private function break_logical_ans_str($logicalstr) {
