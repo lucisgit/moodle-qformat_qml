@@ -28,4 +28,4 @@ $plugin->component = 'qformat_qml';
 $plugin->version   = 2015030601;
 $plugin->requires  = 2014051203; // 2.7.3.
 
-$plugin->maturity  = MATURITY_BETA;
+$plugin->maturity  = MATURITY_ALPHA;
