@@ -19,7 +19,7 @@ If you try to import a file that contains unsupported question types, the import
 
 ### Limitations ###
 
-Currently many of the question attributes are set to default values. This means that when importing questions, specific question and/or answer feedback will not be imported and instead will be set to a generic response.
+Currently many of the question attributes are set to default values. This means that when importing questions, specific question and/or answer feedback will not be imported and instead will be set to a generic response. The same goes with other question attributes e.g. units in numeric questions.
 Any questions that contain an embedded image in the question text may not display unless the image is linked to via a URL that is accessible via the internet.
 
 ### Supported Questionmark question types ###
