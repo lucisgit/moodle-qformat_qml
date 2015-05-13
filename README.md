@@ -6,6 +6,9 @@
 
 ### Installation ###
 
+Simple download the files as a .zip, upload to the Plugin Installation Wizard (Administration->Plugins->Install Plugins) and follow the instructions.
+
+**Manual Install**
 To install this plugin copy the qml folder into the "question->format" folder and update the database.
 You can do this by going to "Site administration->Notifications" and clicking upgrade database.
 
