@@ -109,8 +109,8 @@ class qformat_qml extends qformat_default {
         // Initalise question object.
         $qo = $this->defaultquestion();
 
-        $qtext = trim((string) $xmlquestion->CONTENT);
-        $qname = trim((string) $xmlquestion['DESCRIPTION']);
+        $qtext = clean_param($xmlquestion->CONTENT, PARAM_CLEANHTML);
+        $qname = trim(clean_param($xmlquestion['DESCRIPTION'], PARAM_TEXT));
 
         if (strlen($qname) == 0) {
             $qname = $qtext;
@@ -236,8 +236,8 @@ class qformat_qml extends qformat_default {
         // Header parts particular to multichoice.
         $qo->qtype = 'multichoice';
         $qo->answernumbering = 'abc';
-        $qo->single = 0;
-        $qo->shuffleanswers = 0;
+        $qo->single = ($xmlquestion->ANSWER['QTYPE'] == 'MC') ? 1 : 0;
+        $qo->shuffleanswers = (isset($xmlquestion->ANSWER['SHUFFLE']) && $xmlquestion->ANSWER['SHUFFLE'] == 'YES') ? 1 : 0;
 
         // Answer count.
         $acount = 0;
@@ -248,7 +248,11 @@ class qformat_qml extends qformat_default {
          * condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
          */
         if (strlen($ansconditiontext) <= 3) {
-            $ansconditiontext = $this->build_logical_answer_string($xmlquestion);
+            $outcomes = $this->create_combined_outcomes_object($xmlquestion);
+            $ansconditiontext = $outcomes->ansstring;
+            $feedback = $outcomes->feedback;
+        } else {
+            $feedback = $this->create_feedback_object($xmlquestion);
         }
         
         // Parse the logical answer string into an array of fractions.
@@ -264,15 +268,17 @@ class qformat_qml extends qformat_default {
             if ($child->getName() == "ANSWER") {
                 foreach ($child->children() as $anschild) {
                     if ($anschild->getName() == "CHOICE") {
-                        $anstext = (string) $anschild->CONTENT;
+                        $anstext = clean_param($anschild->CONTENT, PARAM_TEXT);
                         $ansfraction = $anscondition[$acount];
+                        if (is_array($feedback)) {
+                            $ansfeedback = $feedback[$acount];
+                        } else {
+                            $ansfeedback = ($ansfraction > 0) ? $feedback->correct : $feedback->incorrect;
+                        }
 
                         $qo->answer[$acount] = array("text" => $anstext, "format" => FORMAT_MOODLE);
                         $qo->fraction[$acount] = $ansfraction;
-                        $qo->feedback[$acount] = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
-                        if ($ansfraction > 0) {
-                            $qo->feedback[$acount] = array("text" => "Correct", "format" => FORMAT_MOODLE);
-                        }
+                        $qo->feedback[$acount] = array('text' => $ansfeedback, 'format' => FORMAT_MOODLE);
 
                         ++$acount;
                     }
@@ -285,30 +291,58 @@ class qformat_qml extends qformat_default {
     }
 
     /**
-     * Builds a logical string to parse the correct answers. Used when the 
-     * mulichoice question has seperate answers for the question.
-     * @param SimpleXMLObject the XML question object
-     * @return string a logical string to be used for the parse_answer_condition method
+     * Builds a logical string to parse the correct answers, and an array of feedback.
+     * Used when the multichoice question has separate answers for the question.
+     * @param SimpleXMLObject $xmlquestion The XML question object
+     * @return stdClass An object containing the logical answer string and feedback
      */
-    private function build_logical_answer_string($xmlquestion) {
+    private function create_combined_outcomes_object($xmlquestion) {
 
-        $ansstring = "";
+        $ansstring = '';
+        $feedback = array();
         $acount = 0;
 
         foreach ($xmlquestion->children() as $child) {
-            if ($child->getName() == "OUTCOME") {
+            if ($child->getName() == 'OUTCOME') {
                 
-                if ($child['SCORE'] === 0 || $child["ADD"] == '-1') {
-                    $ansstring .= "NOT ";
+                if ($child['SCORE'] == '0' || $child['ADD'] == '-1') {
+                    $ansstring .= 'NOT ';
                 }
 
                 $ansstring .= '"' . $acount . '"' . ' ';
+                $feedback[$acount] = clean_param($child->CONTENT, PARAM_TEXT);
+                ++$acount;
             }
-
-            ++$acount;
         }
 
-        return $ansstring;
+        $outcomes = new stdClass();
+        $outcomes->ansstring = $ansstring;
+        $outcomes->feedback = $feedback;
+
+        return $outcomes;
+    }
+
+    /**
+     * Creates an object containing feedback for correct and incorrect answers.
+     * Used when there are just two types of feedback defined for the question.
+     * @param SimpleXMLObject $xmlquestion The XML question object
+     * @return stdClass An object containing the two sets of feedback
+     */
+    private function create_feedback_object($xmlquestion) {
+
+        $feedback = new stdClass();
+
+        foreach ($xmlquestion->children() as $child) {
+            if ($child->getName() == 'OUTCOME') {
+                if ($child['SCORE'] == '0' || $child['ADD'] == '-1') {
+                    $feedback->incorrect = clean_param($child->CONTENT, PARAM_TEXT);
+                } else {
+                    $feedback->correct = clean_param($child->CONTENT, PARAM_TEXT);
+                }
+            }
+        }
+
+        return $feedback;
     }
 
     /**
@@ -485,8 +519,9 @@ class qformat_qml extends qformat_default {
             } else {
                 $anstext = $this->break_logical_ans_str($ansconditiontext);
             }
-            $qo->feedback[] = array("text" => "Correct", "format" => FORMAT_MOODLE);
-            $qo->feedback[] = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
+            $feedback = $this->create_feedback_object($xmlquestion);
+            $qo->feedback[] = array('text' => $feedback->correct, 'format' => FORMAT_MOODLE);
+            $qo->hint = array_fill(0, 2, array('text' => $feedback->incorrect, 'format' => FORMAT_MOODLE));
             $qo->fraction[] = 1;
             $qo->answer[] = trim($anstext);
         } else {
