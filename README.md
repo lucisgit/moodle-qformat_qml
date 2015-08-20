@@ -34,13 +34,11 @@ Any questions that contain an embedded image in the question text may not displa
 * Essay Question (ESSAY)
 * Text Match (TM)
 * Numeric Question (NUM)
+* Select/Select-a-blank (SEL)
+* Matching Questions (MATCH)
 
 *FIB questions will either be a short answer question or they will be converted into a Embedded Answers (Cloze) question type.
 ### Other question types (Unsupported) ###
 * Hotspot (HOT)
-* ? SEL
-* Select-a-blank (SAB)
 * Ranking: Rank in Order (RANK)
 * Likert Scale (LKS)
-* ? Word Response ? (MATCH)
-* ? (MAT)
