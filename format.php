@@ -482,8 +482,6 @@ class qformat_qml extends qformat_default {
                             $ansfeedback = ($ansfraction > 0) ? $feedback->correct : $feedback->incorrect;
                         }
 
-                        echo $ansfraction;
-
                         $qo->answer[$acount] = array("text" => $anstext, "format" => FORMAT_MOODLE);
                         $qo->fraction[$acount] = $ansfraction;
                         $qo->feedback[$acount] = array('text' => $ansfeedback, 'format' => FORMAT_MOODLE);
