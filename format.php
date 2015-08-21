@@ -72,6 +72,9 @@ class qformat_qml extends qformat_default {
                 case "multichoice":
                     $qo = $this->import_multichoice($xmlquestion);
                     break;
+                case "select" :
+                    $qo = $this->import_select($xmlquestion);
+                    break;
                 case "truefalse":
                     $qo = $this->import_truefalse($xmlquestion);
                     break;
@@ -83,6 +86,9 @@ class qformat_qml extends qformat_default {
                     break;
                 case "numerical":
                     $qo = $this->import_numerical($xmlquestion);
+                    break;
+                case "match":
+                    $qo = $this->import_match($xmlquestion);
                     break;
                 default:
                     $qtstr = (string) $questiontype;
@@ -225,6 +231,198 @@ class qformat_qml extends qformat_default {
     }
 
     /**
+     * Import a single answer multiple choice type question
+     * @param array question question array from xml tree
+     * @return object question object
+     */
+    public function import_select($xmlquestion){
+        $qo = $this->import_headers($xmlquestion);
+        $qo->qtype = 'multichoice';
+        $qo->answernumbering = 'abc';
+        $qo->single = 1;
+        $qo->shuffleanswers = 0;
+        $acount = 0;
+        $ocount = 0;
+        $qo->correctfeedback = array("text" => "Correct", "format" => FORMAT_MOODLE);
+        $qo->partiallycorrectfeedback = array("text" => "Partly Correct", "format" => FORMAT_MOODLE);
+        $qo->incorrectfeedback = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
+        //Used to obtain the String condition which is correct
+        $ansconditiontextarray = explode('"', (string) $xmlquestion->OUTCOME[0]->CONDITION);
+        if($ansconditiontextarray>=3){
+            $correct = $ansconditiontextarray[3];
+        }
+        //In this for loop the multiple choice questions are set and stored in a array called option and the question is also set
+        //Also the correct value is found
+        foreach ($xmlquestion->children() as $child) {
+            if ($child->getName() == "ANSWER") {
+                foreach ($child->children() as $anschild) {
+                    if ($anschild->getName() == "CHOICE") {
+                        foreach ($anschild->children() as $optionchild) {
+                            if ($optionchild->getName() == "OPTION") {
+                                $option[$acount] = (string)$optionchild;
+                                $qo->answer[$acount] = array("text"=>$option[$acount], "format"=>FORMAT_MOODLE);
+                                $qo->fraction[$acount] = 0;
+
+                                //finding the correct value
+                                if ($option[$acount] == $correct) {
+                                    $qo->fraction[$acount] = 1;
+                                }
+                                $acount++;
+                            }
+                            if ($optionchild->getName() == "CONTENT"){
+                                $qo->questiontext= (string) $anschild->CONTENT;   
+                            }
+                        }
+                    }
+                }   
+            }
+        }
+        $qo->feedback = $this->setFeedback($xmlquestion, $option);
+        return $qo;
+
+    }
+
+/**
+* obtains feedback relating to the conditional choice provided and returns feedback[]
+**/
+    public function setFeedback($xmlquestion, $option){
+        $feedback ="";
+        foreach ($xmlquestion->children() as $child) {
+            if ($child->getName() == "OUTCOME"){
+                foreach ($child->children() as $outchild) {
+                    if ($outchild->getName() == "CONDITION"){
+                        $outconditionarray = explode('"', (String)$outchild);
+
+                    }
+                    if(count($outconditionarray)>= 3){
+                        if ($outchild->getName() == "CONTENT"){
+                            for ($i=0; $i < count($option); $i++) { 
+                                if($option[$i] == $outconditionarray[3]){
+                                    $feedback[$i] = array("text" => (string)$outchild, "format" => FORMAT_MOODLE);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return $feedback;
+    }
+    /**
+    *Gets the values of the choices and returns them as a array
+    **/
+    private function getChoices($xmlquestion){
+        $choicecount = 0;
+        $choices='';
+        foreach ($xmlquestion->children() as $child) {
+            if ($child->getName() == "ANSWER") {
+                foreach($child->children() as $anschild){
+                    if ($anschild->getName() == "CHOICE") {
+                        foreach ($anschild->children() as $optionchild) {
+                            if($optionchild->getName() == "OPTION"){
+                                $choices[$choicecount]=(string)$optionchild;
+                                $choicecount++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return $choices;
+    }
+    /**
+    *Gets the values of the stem and returns them as a array
+    **/
+    private function getStems($xmlquestion){
+        $stemcount = 0;
+        $stems ='';
+        foreach ($xmlquestion->children() as $child) {
+            $stemcount = 0;
+            if ($child->getName() == "ANSWER") {
+                foreach($child->children() as $anschild){
+                    if ($anschild->getName() == "CHOICE") {
+                        foreach ($anschild->children() as $optionchild) {
+                            if($optionchild->getName() == "CONTENT"){
+                                $stems[$stemcount]=(string)$optionchild;
+                                $stemcount++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return $stems;
+    }
+
+    /**
+    *Gets the id of the correct choices for the id of the correct stem(as right[$i] = stem id)
+    **/
+    private function getRight($xmlquestion, $choices){
+        $rightcount = 0;
+        $right='';
+        foreach ($xmlquestion->children() as $child) {
+            if ($child->getName() == "OUTCOME") {
+                $ansconditiontextarray[3]="";
+                $ansconditiontextarray = explode('"', (string) $child->CONDITION);
+                if(count($ansconditiontextarray)==5){
+                    $correct = $ansconditiontextarray[3];
+                    for($i=0; $i<count($choices); $i++ ){
+                        if($correct==$choices[$i]){
+                            $right[$rightcount] = $i;
+                            $rightcount++;
+                        }
+                    }
+                } 
+            }
+        }
+        return $right;
+    }
+
+    /**
+     * Import a Match type question
+     * @param array question question array from xml tree
+     * @return object question object
+     */
+    public function import_match($xmlquestion){
+        $qo = $this->import_headers($xmlquestion);
+        //stores all the values required for the question
+        $stems = $this->getStems($xmlquestion);
+        $choices = $this->getChoices($xmlquestion);
+        $right = $this->getRight($xmlquestion, $choices);
+        $qo->qtype="match";
+        $qo->shufflestems = 0;
+        $qo->choices=$choices;
+        $qo->stems=$stems;
+        $qo->right=$right;
+        $qo->questiontextformat = 0;
+        //gets question text 
+        foreach ($xmlquestion->children() as $child) {
+            if($child->getName()=="CONTENT"){
+                $qo->questiontext = (string)$child;
+            }
+        }
+        //store stems in subquestions this is used for displaying (stored as array array)
+        for($i=0; $i<count($stems)-1; $i++ ){
+        $qo->subquestions[$i] = array("text"=>$stems[$i],"format"=>FORMAT_MOODLE);
+        }
+        //store choices in subanswers this is used for the dropdown menu
+        for($i=0; $i<count($choices)-1; $i++ ){
+            $qo->subanswers[$i] = $choices[$i];
+        }
+        //default feedback.
+        $qo->correctfeedback = array("text" => "Correct", "format" => FORMAT_MOODLE);
+        $qo->partiallycorrectfeedback = array("text" => "Partly Correct", "format" => FORMAT_MOODLE);
+        $qo->incorrectfeedback = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
+        $qo->correctfeedbackformat =0;
+        $qo->partiallyfeedbackformat =0;
+        $qo->incorrectfeedbackformat =0;
+
+        $qo->feedback = $this->setFeedback($xmlquestion,$choices);
+
+        return $qo;
+    }
+
+    /**
      * Import a multichoice question
      * @param SimpleXML_Object contains the question data in a SimpleXML_Object
      * @return object question object
@@ -275,6 +473,8 @@ class qformat_qml extends qformat_default {
                         } else {
                             $ansfeedback = ($ansfraction > 0) ? $feedback->correct : $feedback->incorrect;
                         }
+
+                        echo $ansfraction;
 
                         $qo->answer[$acount] = array("text" => $anstext, "format" => FORMAT_MOODLE);
                         $qo->fraction[$acount] = $ansfraction;
@@ -401,8 +601,7 @@ class qformat_qml extends qformat_default {
         }
         return $fractionarr;
     }
-
-    /**
+     /**
      * Import true or false question
      * @param SimpleXML_Object contains the question data in a SimpleXML_Object
      * @return object question object
@@ -824,6 +1023,10 @@ class qformat_qml extends qformat_default {
             case "MC":
                 $mdlquestiontype = "multichoice";
                 break;
+            case "SEL":
+                $mdlquestiontype = "select";
+                break;
+            case "YN":
             case "TF":
                 $mdlquestiontype = "truefalse";
                 break;
@@ -836,6 +1039,9 @@ class qformat_qml extends qformat_default {
                 break;
             case "NUM":
                 $mdlquestiontype = "numerical";
+                break;
+            case "MATCH":
+                $mdlquestiontype = "match";
                 break;
             default :
                 $mdlquestiontype = $strqtype;
