@@ -287,19 +287,19 @@ class qformat_qml extends qformat_default {
      * Obtains feedback relating to the conditional choice provided and returns feedback[].
      */
     public function set_feedback($xmlquestion, $option) {
-        $feedback = "";
+        $feedback = '';
         foreach ($xmlquestion->children() as $child) {
-            if ($child->getName() == "OUTCOME") {
+            if ($child->getName() == 'OUTCOME') {
                 foreach ($child->children() as $outchild) {
-                    if ($outchild->getName() == "CONDITION") {
+                    if ($outchild->getName() == 'CONDITION') {
                         $outconditionarray = explode('"', (string) $outchild);
 
                     }
                     if (count($outconditionarray) >= 3) {
-                        if ($outchild->getName() == "CONTENT") {
+                        if ($outchild->getName() == 'CONTENT') {
                             for ($i = 0; $i < count($option); $i++) {
                                 if ($option[$i] == $outconditionarray[3]) {
-                                    $feedback[$i] = array("text" => (string) $outchild, "format" => FORMAT_MOODLE);
+                                    $feedback[$i] = array('text' => (string) $outchild, 'format' => FORMAT_MOODLE);
                                 }
                             }
                         }
@@ -312,73 +312,85 @@ class qformat_qml extends qformat_default {
 
     /**
      * Gets the values of the choices and returns them as an array.
+     * @param SimpleXMLObject $xmlquestion The XML question object
+     * @return array An array of choice strings
      */
     private function get_choices($xmlquestion) {
-        $choicecount = 0;
-        $choices = '';
-        foreach ($xmlquestion->children() as $child) {
-            if ($child->getName() == "ANSWER") {
-                foreach ($child->children() as $anschild) {
-                    if ($anschild->getName() == "CHOICE") {
-                        foreach ($anschild->children() as $optionchild) {
-                            if ($optionchild->getName() == "OPTION") {
-                                $choices[$choicecount] = (string) $optionchild;
-                                $choicecount++;
-                            }
-                        }
+        $choices = array();
+
+        foreach ($xmlquestion->ANSWER->children() as $anschild) {
+            if ($anschild->getName() == 'CHOICE' && $anschild->attributes()->ID == '0') {
+                foreach ($anschild->children() as $choicechild) {
+                    if ($choicechild->getName() == 'OPTION') {
+                        $choice = clean_param($choicechild, PARAM_TEXT);
+                        $choices[$choice] = $choice;
                     }
                 }
             }
         }
+
         return $choices;
     }
 
     /**
      * Gets the values of the stem and returns them as an array.
+     * @param SimpleXMLObject $xmlquestion The XML question object
+     * @return array An array of stem ids with subquestion text
      */
     private function get_stems($xmlquestion) {
-        $stemcount = 0;
-        $stems = '';
-        foreach ($xmlquestion->children() as $child) {
-            $stemcount = 0;
-            if ($child->getName() == "ANSWER") {
-                foreach ($child->children() as $anschild) {
-                    if ($anschild->getName() == "CHOICE") {
-                        foreach ($anschild->children() as $optionchild) {
-                            if ($optionchild->getName() == "CONTENT") {
-                                $stems[$stemcount] = (string) $optionchild;
-                                $stemcount++;
-                            }
-                        }
+        $stems = array();
+
+        foreach ($xmlquestion->ANSWER->children() as $anschild) {
+            if ($anschild->getName() == 'CHOICE') {
+                $stemid = clean_param($anschild['ID'], PARAM_TEXT);
+                foreach ($anschild->children() as $stemchild) {
+                    if ($stemchild->getName() == 'CONTENT') {
+                        $stems[$stemid] = clean_param($stemchild, PARAM_TEXT);
                     }
                 }
             }
         }
+
         return $stems;
     }
 
     /**
-     * Gets the id of the correct choices for the id of the correct stem (as right[$i] = stem id).
+     * Gets the correct choice for the id of each stem (as matches[stemid] = choice).
+     * @param SimpleXMLObject $xmlquestion The XML question object
+     * @param array $stemids An array of stem ids
+     * @return array An array of matched stem ids and choices
      */
-    private function get_right($xmlquestion, $choices) {
-        $rightcount = 0;
-        $right = '';
-        foreach ($xmlquestion->children() as $child) {
-            if ($child->getName() == "OUTCOME") {
-                $ansconditiontextarray[3] = "";
-                $ansconditiontextarray = explode('"', (string) $child->CONDITION);
-                if (count($ansconditiontextarray) == 5) {
-                    $correct = $ansconditiontextarray[3];
-                    for ($i = 0; $i < count($choices); $i++) {
-                        if ($correct == $choices[$i]) {
-                            $right[$rightcount] = $i;
-                            $rightcount++;
-                        }
-                    }
-                }
+    private function get_matches($xmlquestion, $stemids) {
+        $matches = array();
+
+        foreach ($xmlquestion->OUTCOME as $outcome) {
+            $outcomeidparts = explode(' ', $outcome['ID']);
+            $stemid = $outcomeidparts[0];
+            $conditionstring = trim(clean_param($outcome->CONDITION, PARAM_TEXT));
+            $outcomes[$stemid] = $conditionstring;
+        }
+
+        // Try to find an outcome condition for each of the stem ids.
+        foreach ($stemids as $stemid) {
+            if (array_key_exists($stemid, $outcomes)) {
+                $conditionparts = explode(' MATCHES ', $outcomes[$stemid]);
+                $choice = substr($conditionparts[1], 1, -1);
+                $matches[$stemid] = $choice;
             }
         }
-        return $right;
+
+        // Otherwise, fall back on combined outcome condition string.
+        if (empty($matches) && array_key_exists('right', $outcomes)) {
+            $conditions = explode(' AND ', $outcomes['right']);
+            foreach ($conditions as $condition) {
+                $conditionparts = explode(' MATCHES ', $condition);
+                $stemid = substr($conditionparts[0], 1, -1);
+                $choice = substr($conditionparts[1], 1, -1);
+                $matches[$stemid] = $choice;
+            }
+        }
+
+        return $matches;
     }
 
     /**
@@ -390,42 +402,50 @@ class qformat_qml extends qformat_default {
         $qo = $this->import_headers($xmlquestion);
 
         // Stores all the values required for the question.
+        $qo->qtype = 'match';
+        $qo->shufflestems = 0;
+        $qo->questiontext = clean_param($xmlquestion->CONTENT, PARAM_CLEANHTML);
+        $qo->questiontextformat = 0;
         $stems = $this->get_stems($xmlquestion);
         $choices = $this->get_choices($xmlquestion);
-        $right = $this->get_right($xmlquestion, $choices);
-        $qo->qtype = "match";
-        $qo->shufflestems = 0;
-        $qo->choices = $choices;
-        $qo->stems = $stems;
-        $qo->right = $right;
-        $qo->questiontextformat = 0;
-
-        // Gets question text.
-        foreach ($xmlquestion->children() as $child) {
-            if ($child->getName() == "CONTENT") {
-                $qo->questiontext = (string) $child;
-            }
-        }
+        $matches = $this->get_matches($xmlquestion, array_keys($stems));
 
         // Store stems in subquestions. This is used for displaying (stored as array).
-        for ($i = 0; $i < count($stems) - 1; $i++) {
-            $qo->subquestions[$i] = array("text" => $stems[$i], "format" => FORMAT_MOODLE);
+        foreach ($stems as $stemid => $stemtext) {
+            $qo->subquestions[$stemid] = array('text' => $stemtext, 'format' => FORMAT_MOODLE);
         }
 
         // Store choices in subanswers. This is used for the dropdown menu.
-        for ($i = 0; $i < count($choices) - 1; $i++) {
-            $qo->subanswers[$i] = $choices[$i];
+        foreach ($matches as $stemid => $choice) {
+            $qo->subanswers[$stemid] = $choice;
+            unset($choices[$choice]);
+        }
+        // Include any remaining wrong choices without a matching question.
+        foreach ($choices as $choice) {
+            $qo->subquestions[] = array('text' => '', 'format' => FORMAT_MOODLE);
+            $qo->subanswers[] = $choice;
+        }
+
+        // Get feedback for the overall outcome.
+        foreach ($xmlquestion->OUTCOME as $outcome) {
+            $content = clean_param($outcome->CONTENT, PARAM_TEXT);
+            if ($outcome['ID'] == 'right') {
+                $qo->correctfeedback = array('text' => $content, 'format' => FORMAT_MOODLE);
+            }
+            if ($outcome['ID'] == 'wrong') {
+                $qo->hint = array_fill(0, 2, array('text' => $content, 'format' => FORMAT_MOODLE));
+            }
         }
 
         // Default feedback.
-        $qo->correctfeedback = array("text" => "Correct", "format" => FORMAT_MOODLE);
-        $qo->partiallycorrectfeedback = array("text" => "Partly Correct", "format" => FORMAT_MOODLE);
-        $qo->incorrectfeedback = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
+        if (empty($qo->correctfeedback['text'])) {
+            $qo->correctfeedback = array('text' => 'Correct', 'format' => FORMAT_MOODLE);
+        }
+        $qo->partiallycorrectfeedback = array('text' => 'Partly Correct', 'format' => FORMAT_MOODLE);
+        $qo->incorrectfeedback = array('text' => 'Incorrect', 'format' => FORMAT_MOODLE);
         $qo->correctfeedbackformat = 0;
         $qo->partiallyfeedbackformat = 0;
         $qo->incorrectfeedbackformat = 0;
-
-        $qo->feedback = $this->set_feedback($xmlquestion, $choices);
 
         return $qo;
     }
