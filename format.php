@@ -68,29 +68,29 @@ class qformat_qml extends qformat_default {
             $qo = null;
 
             switch ($questiontype) {
-                case "multichoice":
+                case 'multichoice':
                     $qo = $this->import_multichoice($xmlquestion);
                     break;
-                case "select" :
+                case 'select' :
                     $qo = $this->import_select($xmlquestion);
                     break;
-                case "truefalse":
+                case 'truefalse':
                     $qo = $this->import_truefalse($xmlquestion);
                     break;
-                case "shortanswer":
+                case 'shortanswer':
                     $qo = $this->import_shortanswer($xmlquestion);
                     break;
-                case "essay":
+                case 'essay':
                     $qo = $this->import_essay($xmlquestion);
                     break;
-                case "numerical":
+                case 'numerical':
                     $qo = $this->import_numerical($xmlquestion);
                     break;
-                case "match":
+                case 'match':
                     $qo = $this->import_match($xmlquestion);
                     break;
                 default:
-                    $qtstr = (string) $questiontype;
+                    $qtstr = clean_param($questiontype, PARAM_TEXT);
                     $this->error(get_string('unknownquestiontype', 'qformat_qml', $qtstr));
                     break;
             }
@@ -114,7 +114,7 @@ class qformat_qml extends qformat_default {
         // Initalise question object.
         $qo = $this->defaultquestion();
 
-        $qtext = clean_param($xmlquestion->CONTENT, PARAM_CLEANHTML);
+        $qtext = clean_param($xmlquestion->CONTENT, PARAM_RAW);
         $qname = trim(clean_param($xmlquestion['DESCRIPTION'], PARAM_TEXT));
 
         if (strlen($qname) == 0) {
@@ -127,21 +127,21 @@ class qformat_qml extends qformat_default {
 
         $qo->name = $qname;
         $qo->questiontext = $qtext;
-        $qo->questiontextformat = 0; // Moodle_auto_format.
-        $qo->generalfeedback = "";
-        $qo->generalfeedbackformat = 1;
-        $qo->feedbackformat = FORMAT_MOODLE;
+        $qo->questiontextformat = FORMAT_HTML;
+        $qo->generalfeedback = '';
+        $qo->generalfeedbackformat = FORMAT_HTML;
+        $qo->feedbackformat = FORMAT_HTML;
 
         $qo->category = $this->import_category($xmlquestion);
 
         // Get the content type for this question.
-        $contenttype = (string) $xmlquestion->CONTENT['TYPE'];
+        $contenttype = clean_param($xmlquestion->CONTENT['TYPE'], PARAM_TEXT);
 
         switch ($contenttype) {
-            case "text/plain":
+            case 'text/plain':
                 $qo->questiontextformat = 2; // Plain_text.
                 break;
-            case "text/html":
+            case 'text/html':
                 $qo->questiontextformat = 1; // HTML.
                 break;
             default:
@@ -160,7 +160,7 @@ class qformat_qml extends qformat_default {
     public function import_category($xmlquestion) {
         $qo = new stdClass();
         $qo->qtype = 'category';
-        $qo->category = (string) $xmlquestion["TOPIC"];
+        $qo->category = clean_param($xmlquestion['TOPIC'], PARAM_TEXT);
         $this->questions[] = $qo;
         return $qo->category;
     }
@@ -181,14 +181,14 @@ class qformat_qml extends qformat_default {
         $qo->feedback = array();
         $qo->fraction = array();
 
-        $ans = substr((string) $xmlquestion->OUTCOME[0]->CONDITION, 5);
+        $ans = substr(clean_param($xmlquestion->OUTCOME[0]->CONDITION, PARAM_TEXT), 5);
         $qo->answer[] = $ans;
 
         if (empty($qo->answer)) {
             $qo->answer = '*';
         }
 
-        $qo->feedback[] = array("text" => "", "format" => FORMAT_MOODLE);
+        $qo->feedback[] = array('text' => '', 'format' => FORMAT_HTML);
         $qo->tolerance[] = 0;
 
         // Deprecated?
@@ -217,14 +217,14 @@ class qformat_qml extends qformat_default {
         // Header parts particular to essay.
         $qo->qtype = 'essay';
 
-        $qo->responseformat = "editor";
+        $qo->responseformat = 'editor';
         $qo->responsefieldlines = 20;
         $qo->responserequired = 1;
         $qo->attachments = 0;
         $qo->attachmentsrequired = 0;
-        $qo->graderinfo = array("text" => "", "format" => FORMAT_MOODLE);
-        $qo->responsetemplate['text'] = "";
-        $qo->responsetemplate['format'] = "";
+        $qo->graderinfo = array('text' => '', 'format' => FORMAT_HTML);
+        $qo->responsetemplate['text'] = '';
+        $qo->responsetemplate['format'] = '';
 
         return $qo;
     }
@@ -242,12 +242,13 @@ class qformat_qml extends qformat_default {
         $qo->shuffleanswers = 0;
         $acount = 0;
         $ocount = 0;
-        $qo->correctfeedback = array("text" => "Correct", "format" => FORMAT_MOODLE);
-        $qo->partiallycorrectfeedback = array("text" => "Partly Correct", "format" => FORMAT_MOODLE);
-        $qo->incorrectfeedback = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
+        $qo->correctfeedback = array('text' => get_string('correctfeedbackdefault', 'question'), 'format' => FORMAT_HTML);
+        $qo->partiallycorrectfeedback = array('text' => get_string('partiallycorrectfeedbackdefault', 'question'),
+            'format' => FORMAT_HTML);
+        $qo->incorrectfeedback = array('text' => get_string('incorrectfeedbackdefault', 'question'), 'format' => FORMAT_HTML);
 
         // Used to obtain the string condition which is correct.
-        $ansconditiontextarray = explode('"', (string) $xmlquestion->OUTCOME[0]->CONDITION);
+        $ansconditiontextarray = explode('"', clean_param($xmlquestion->OUTCOME[0]->CONDITION, PARAM_TEXT));
         if ($ansconditiontextarray >= 3) {
             $correct = $ansconditiontextarray[3];
         }
@@ -255,13 +256,13 @@ class qformat_qml extends qformat_default {
         // In this for loop the multiple choice questions are set and stored in a array called option and the question is also set.
         // Also the correct value is found.
         foreach ($xmlquestion->children() as $child) {
-            if ($child->getName() == "ANSWER") {
+            if ($child->getName() == 'ANSWER') {
                 foreach ($child->children() as $anschild) {
-                    if ($anschild->getName() == "CHOICE") {
+                    if ($anschild->getName() == 'CHOICE') {
                         foreach ($anschild->children() as $optionchild) {
-                            if ($optionchild->getName() == "OPTION") {
-                                $option[$acount] = (string) $optionchild;
-                                $qo->answer[$acount] = array("text" => $option[$acount], "format" => FORMAT_MOODLE);
+                            if ($optionchild->getName() == 'OPTION') {
+                                $option[$acount] = clean_param($optionchild, PARAM_TEXT);
+                                $qo->answer[$acount] = array('text' => $option[$acount], 'format' => FORMAT_HTML);
                                 $qo->fraction[$acount] = 0;
 
                                 // Finding the correct value.
@@ -270,8 +271,8 @@ class qformat_qml extends qformat_default {
                                 }
                                 $acount++;
                             }
-                            if ($optionchild->getName() == "CONTENT") {
-                                $qo->questiontext = (string) $anschild->CONTENT;
+                            if ($optionchild->getName() == 'CONTENT') {
+                                $qo->questiontext = clean_param($anschild->CONTENT, PARAM_RAW);
                             }
                         }
                     }
@@ -292,14 +293,14 @@ class qformat_qml extends qformat_default {
             if ($child->getName() == 'OUTCOME') {
                 foreach ($child->children() as $outchild) {
                     if ($outchild->getName() == 'CONDITION') {
-                        $outconditionarray = explode('"', (string) $outchild);
+                        $outconditionarray = explode('"', clean_param($outchild, PARAM_TEXT));
 
                     }
                     if (count($outconditionarray) >= 3) {
                         if ($outchild->getName() == 'CONTENT') {
                             for ($i = 0; $i < count($option); $i++) {
                                 if ($option[$i] == $outconditionarray[3]) {
-                                    $feedback[$i] = array('text' => (string) $outchild, 'format' => FORMAT_MOODLE);
+                                    $feedback[$i] = array('text' => clean_param($outchild, PARAM_RAW), 'format' => FORMAT_HTML);
                                 }
                             }
                         }
@@ -345,7 +346,7 @@ class qformat_qml extends qformat_default {
                 $stemid = clean_param($anschild['ID'], PARAM_TEXT);
                 foreach ($anschild->children() as $stemchild) {
                     if ($stemchild->getName() == 'CONTENT') {
-                        $stems[$stemid] = clean_param($stemchild, PARAM_TEXT);
+                        $stems[$stemid] = clean_param($stemchild, PARAM_RAW);
                     }
                 }
             }
@@ -404,7 +405,7 @@ class qformat_qml extends qformat_default {
         // Stores all the values required for the question.
         $qo->qtype = 'match';
         $qo->shufflestems = 0;
-        $qo->questiontext = clean_param($xmlquestion->CONTENT, PARAM_CLEANHTML);
+        $qo->questiontext = clean_param($xmlquestion->CONTENT, PARAM_RAW);
         $qo->questiontextformat = 0;
         $stems = $this->get_stems($xmlquestion);
         $choices = $this->get_choices($xmlquestion);
@@ -412,7 +413,7 @@ class qformat_qml extends qformat_default {
 
         // Store stems in subquestions. This is used for displaying (stored as array).
         foreach ($stems as $stemid => $stemtext) {
-            $qo->subquestions[$stemid] = array('text' => $stemtext, 'format' => FORMAT_MOODLE);
+            $qo->subquestions[$stemid] = array('text' => $stemtext, 'format' => FORMAT_HTML);
         }
 
         // Store choices in subanswers. This is used for the dropdown menu.
@@ -422,27 +423,28 @@ class qformat_qml extends qformat_default {
         }
         // Include any remaining wrong choices without a matching question.
         foreach ($choices as $choice) {
-            $qo->subquestions[] = array('text' => '', 'format' => FORMAT_MOODLE);
+            $qo->subquestions[] = array('text' => '', 'format' => FORMAT_HTML);
             $qo->subanswers[] = $choice;
         }
 
         // Get feedback for the overall outcome.
         foreach ($xmlquestion->OUTCOME as $outcome) {
-            $content = clean_param($outcome->CONTENT, PARAM_TEXT);
+            $content = clean_param($outcome->CONTENT, PARAM_RAW);
             if ($outcome['ID'] == 'right') {
-                $qo->correctfeedback = array('text' => $content, 'format' => FORMAT_MOODLE);
+                $qo->correctfeedback = array('text' => $content, 'format' => FORMAT_HTML);
             }
             if ($outcome['ID'] == 'wrong') {
-                $qo->hint = array_fill(0, 2, array('text' => $content, 'format' => FORMAT_MOODLE));
+                $qo->hint = array_fill(0, 2, array('text' => $content, 'format' => FORMAT_HTML));
             }
         }
 
         // Default feedback.
         if (empty($qo->correctfeedback['text'])) {
-            $qo->correctfeedback = array('text' => 'Correct', 'format' => FORMAT_MOODLE);
+            $qo->correctfeedback = array('text' => get_string('correctfeedbackdefault', 'question'), 'format' => FORMAT_HTML);
         }
-        $qo->partiallycorrectfeedback = array('text' => 'Partly Correct', 'format' => FORMAT_MOODLE);
-        $qo->incorrectfeedback = array('text' => 'Incorrect', 'format' => FORMAT_MOODLE);
+        $qo->partiallycorrectfeedback = array('text' => get_string('partiallycorrectfeedbackdefault', 'question'),
+            'format' => FORMAT_HTML);
+        $qo->incorrectfeedback = array('text' => get_string('incorrectfeedbackdefault', 'question'), 'format' => FORMAT_HTML);
         $qo->correctfeedbackformat = 0;
         $qo->partiallyfeedbackformat = 0;
         $qo->incorrectfeedbackformat = 0;
@@ -468,7 +470,7 @@ class qformat_qml extends qformat_default {
         // Answer count.
         $acount = 0;
 
-        $ansconditiontext = (string) $xmlquestion->OUTCOME[0]->CONDITION;
+        $ansconditiontext = clean_param($xmlquestion->OUTCOME[0]->CONDITION, PARAM_TEXT);
 
         /* It is possible that $ansConditionText will be: "0" or "1", but we want a
          * condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
@@ -485,16 +487,17 @@ class qformat_qml extends qformat_default {
         $anscondition = $this->parse_answer_condition($ansconditiontext);
 
         // Set some default values for feedback.
-        $qo->correctfeedback = array("text" => "Correct", "format" => FORMAT_MOODLE);
-        $qo->partiallycorrectfeedback = array("text" => "Partly Correct", "format" => FORMAT_MOODLE);
-        $qo->incorrectfeedback = array("text" => "Incorrect", "format" => FORMAT_MOODLE);
+        $qo->correctfeedback = array('text' => get_string('correctfeedbackdefault', 'question'), 'format' => FORMAT_HTML);
+        $qo->partiallycorrectfeedback = array('text' => get_string('partiallycorrectfeedbackdefault', 'question'),
+            'format' => FORMAT_HTML);
+        $qo->incorrectfeedback = array('text' => get_string('incorrectfeedbackdefault', 'question'), 'format' => FORMAT_HTML);
 
         // Loop the answers and set the correct fraction and default feedback for each.
         foreach ($xmlquestion->children() as $child) {
-            if ($child->getName() == "ANSWER") {
+            if ($child->getName() == 'ANSWER') {
                 foreach ($child->children() as $anschild) {
-                    if ($anschild->getName() == "CHOICE") {
-                        $anstext = clean_param($anschild->CONTENT, PARAM_TEXT);
+                    if ($anschild->getName() == 'CHOICE') {
+                        $anstext = clean_param($anschild->CONTENT, PARAM_RAW);
                         $ansfraction = $anscondition[$acount];
                         if (is_array($feedback)) {
                             $ansfeedback = $feedback[$acount];
@@ -502,9 +505,9 @@ class qformat_qml extends qformat_default {
                             $ansfeedback = ($ansfraction > 0) ? $feedback->correct : $feedback->incorrect;
                         }
 
-                        $qo->answer[$acount] = array("text" => $anstext, "format" => FORMAT_MOODLE);
+                        $qo->answer[$acount] = array('text' => $anstext, 'format' => FORMAT_HTML);
                         $qo->fraction[$acount] = $ansfraction;
-                        $qo->feedback[$acount] = array('text' => $ansfeedback, 'format' => FORMAT_MOODLE);
+                        $qo->feedback[$acount] = array('text' => $ansfeedback, 'format' => FORMAT_HTML);
 
                         ++$acount;
                     }
@@ -536,7 +539,7 @@ class qformat_qml extends qformat_default {
                 }
 
                 $ansstring .= '"' . $acount . '"' . ' ';
-                $feedback[$acount] = clean_param($child->CONTENT, PARAM_TEXT);
+                $feedback[$acount] = clean_param($child->CONTENT, PARAM_RAW);
                 ++$acount;
             }
         }
@@ -561,9 +564,9 @@ class qformat_qml extends qformat_default {
         foreach ($xmlquestion->children() as $child) {
             if ($child->getName() == 'OUTCOME') {
                 if ($child['SCORE'] == '0' || $child['ADD'] == '-1') {
-                    $feedback->incorrect = clean_param($child->CONTENT, PARAM_TEXT);
+                    $feedback->incorrect = clean_param($child->CONTENT, PARAM_RAW);
                 } else {
-                    $feedback->correct = clean_param($child->CONTENT, PARAM_TEXT);
+                    $feedback->correct = clean_param($child->CONTENT, PARAM_RAW);
                 }
             }
         }
@@ -603,7 +606,7 @@ class qformat_qml extends qformat_default {
          */
         $lastvaluenot = false;
         foreach ($anstextparts as $anstextpart) {
-            if ($anstextpart == "NOT") {
+            if ($anstextpart == 'NOT') {
                 $lastvaluenot = true;
             } else if (strpos($anstextpart, '"') !== false) {
                 if ($lastvaluenot) {
@@ -644,29 +647,29 @@ class qformat_qml extends qformat_default {
         $trueqid = 0;
 
         // The text value of the node either True or False.
-        $answertext = strtolower((string) $xmlquestion->ANSWER->CHOICE[$trueqid]->CONTENT);
+        $answertext = strtolower(clean_param($xmlquestion->ANSWER->CHOICE[$trueqid]->CONTENT, PARAM_TEXT));
 
         // Populate the feedback array and set correct answer.
         if ($answertext == 'true') {
             $qo->feedbacktrue = array(
-                "text" => (string) $xmlquestion->OUTCOME[$trueqid]->CONTENT,
-                "format" => FORMAT_MOODLE
+                'text' => clean_param($xmlquestion->OUTCOME[$trueqid]->CONTENT, PARAM_RAW),
+                'format' => FORMAT_HTML
             );
             $qo->feedbackfalse = array(
-                "text" => (string) $xmlquestion->OUTCOME[$trueqid + 1]->CONTENT,
-                "format" => FORMAT_MOODLE
+                'text' => clean_param($xmlquestion->OUTCOME[$trueqid + 1]->CONTENT, PARAM_RAW),
+                'format' => FORMAT_HTML
             );
 
             $qo->answer = $xmlquestion->OUTCOME[$trueqid]['SCORE'] == 1 ? true : false;
             $qo->correctanswer = $qo->answer;
         } else {
             $qo->feedbacktrue = array(
-                "text" => (string) $xmlquestion->OUTCOME[$trueqid + 1]->CONTENT,
-                "format" => FORMAT_MOODLE
+                'text' => clean_param($xmlquestion->OUTCOME[$trueqid + 1]->CONTENT, PARAM_RAW),
+                'format' => FORMAT_HTML
             );
             $qo->feedbackfalse = array(
-                "text" => (string) $xmlquestion->OUTCOME[$trueqid]->CONTENT,
-                "format" => FORMAT_MOODLE
+                'text' => clean_param($xmlquestion->OUTCOME[$trueqid]->CONTENT, PARAM_RAW),
+                'format' => FORMAT_HTML
             );
             $qo->answer = $xmlquestion->OUTCOME[$trueqid + 1]['SCORE'] == 1 ? true : false;
             $qo->correctanswer = $qo->answer;
@@ -694,12 +697,12 @@ class qformat_qml extends qformat_default {
          * fib_type = "right" means that the condition string is not in more
          * than one part.
          */
-        $fibtype = $xmlquestion->OUTCOME[0]["ID"];
-        $hasmultianswer = strpos((string) $xmlquestion->OUTCOME->CONDITION, "AND") !== false;
+        $fibtype = $xmlquestion->OUTCOME[0]['ID'];
+        $hasmultianswer = strpos(clean_param($xmlquestion->OUTCOME->CONDITION, PARAM_TEXT), 'AND') !== false;
 
-        if ($hasmultianswer || $fibtype == "0") {
+        if ($hasmultianswer || $fibtype == '0') {
             $qo = $this->import_multi_answer_fib($xmlquestion, $qo);
-        } else if (!$hasmultianswer && $fibtype != "0") {
+        } else if (!$hasmultianswer && $fibtype != '0') {
             $qo = $this->import_textmatch($xmlquestion, $qo);
         } else {
             $qo = $this->import_fib($xmlquestion, $qo);
@@ -716,27 +719,27 @@ class qformat_qml extends qformat_default {
      */
     private function import_textmatch($xmlquestion, $qo) {
 
-        $nodetext = "";
+        $nodetext = '';
         if (!empty($xmlquestion->CONTENT[0])) {
-            $nodetext = (string) $xmlquestion->CONTENT[0];
+            $nodetext = clean_param($xmlquestion->CONTENT[0], PARAM_TEXT);
         }
 
         if (strlen($nodetext) > 0) {
-            $qtext = (string) $xmlquestion->CONTENT[0];
+            $qtext = clean_param($xmlquestion->CONTENT[0], PARAM_TEXT);
         } else {
             $qtext = $this->get_question_text($xmlquestion);
         }
 
-        $ansqtext = (string) $xmlquestion->ANSWER->CONTENT;
+        $ansqtext = clean_param($xmlquestion->ANSWER->CONTENT, PARAM_TEXT);
 
-        if ($qo->name == "Fill in Blanks question") {
+        if ($qo->name == 'Fill in Blanks question') {
             $qo->name = $qtext;
         }
 
         $qo->questiontext = $qtext;
 
         if (!empty($xmlquestion->OUTCOME[0])) {
-            $ansconditiontext = (string) $xmlquestion->OUTCOME[0]->CONDITION;
+            $ansconditiontext = clean_param($xmlquestion->OUTCOME[0]->CONDITION, PARAM_TEXT);
         }
 
         if (isset($ansconditiontext)) {
@@ -746,13 +749,13 @@ class qformat_qml extends qformat_default {
                 $anstext = $this->break_logical_ans_str($ansconditiontext);
             }
             $feedback = $this->create_feedback_object($xmlquestion);
-            $qo->feedback[] = array('text' => $feedback->correct, 'format' => FORMAT_MOODLE);
-            $qo->hint = array_fill(0, 2, array('text' => $feedback->incorrect, 'format' => FORMAT_MOODLE));
+            $qo->feedback[] = array('text' => $feedback->correct, 'format' => FORMAT_HTML);
+            $qo->hint = array_fill(0, 2, array('text' => $feedback->incorrect, 'format' => FORMAT_HTML));
             $qo->fraction[] = 1;
             $qo->answer[] = trim($anstext);
         } else {
-            $this->error("Shortanswer questions with no correct answer are not"
-                    . " supported in moodle");
+            $this->error('Shortanswer questions with no correct answer are not'
+                    . ' supported in moodle');
             $qo = null;
         }
 
@@ -767,19 +770,19 @@ class qformat_qml extends qformat_default {
      */
     private function import_fib($xmlquestion, $qo) {
 
-        $ansconditiontext = (string) $xmlquestion->OUTCOME[0]->CONDITION;
-        $correctansfeedback = (string) $xmlquestion->OUTCOME[0]->CONTENT;
-        $incorrectansfeedback = (string) $xmlquestion->OUTCOME[1]->CONTENT;
+        $ansconditiontext = clean_param($xmlquestion->OUTCOME[0]->CONDITION, PARAM_TEXT);
+        $correctansfeedback = clean_param($xmlquestion->OUTCOME[0]->CONTENT, PARAM_RAW);
+        $incorrectansfeedback = clean_param($xmlquestion->OUTCOME[1]->CONTENT, PARAM_RAW);
 
-        $qo->feedback[] = array("text" => $correctansfeedback, "format" => FORMAT_MOODLE);
-        $qo->feedback[] = array("text" => $incorrectansfeedback, "format" => FORMAT_MOODLE);
+        $qo->feedback[] = array('text' => $correctansfeedback, 'format' => FORMAT_HTML);
+        $qo->feedback[] = array('text' => $incorrectansfeedback, 'format' => FORMAT_HTML);
 
         // How much is this answer worth for this question.
         $qo->fraction[] = 1;
 
         $qtext = $this->get_question_text($xmlquestion);
 
-        $anstext = $this->break_logical_ans_str((string) $ansconditiontext);
+        $anstext = $this->break_logical_ans_str(clean_param($ansconditiontext, PARAM_TEXT));
 
         /* Currently this will only match exact answers regardless of what the
          * exported settings were.  (case-insensitive)
@@ -787,14 +790,11 @@ class qformat_qml extends qformat_default {
          */
         $qo->answer[] = $anstext;
 
-        // Clean the text.
-        $qtext = addslashes(trim((string) $qtext));
-
         /* Try to overwrite the generic question name with something more descriptive
          * Not nessesary, but a lot of the test files had generic names, this
          * will replace that with part of the question text.
          */
-        if ($qo->questiontext == "Fill in Blanks question") {
+        if ($qo->questiontext == 'Fill in Blanks question') {
             $qo->name = substr($qtext, 0, 30);
         }
 
@@ -806,23 +806,23 @@ class qformat_qml extends qformat_default {
 
     private function get_question_text($xmlquestion) {
 
-        $qtext = "";
+        $qtext = '';
 
         // Loop the question object.
         foreach ($xmlquestion->children() as $child) {
             // We only care about the answer node.
-            if ($child->getName() == "ANSWER") {
+            if ($child->getName() == 'ANSWER') {
                 foreach ($child->children() as $anschild) {
 
                     // Append the text contained in this Answer->Content node.
-                    if ($anschild->getName() == "CONTENT") {
-                        $qtext .= (string) $anschild;
+                    if ($anschild->getName() == 'CONTENT') {
+                        $qtext .= clean_param($anschild, PARAM_RAW_TRIMMED);
                     }
 
                     /* Append a _ character instead of the answer.
                      * i.e. to show there is a blank that should go here.
                      */
-                    if ($anschild->getName() == "CHOICE") {
+                    if ($anschild->getName() == 'CHOICE') {
                         $qtext .= ' _ ';
                     }
                 }
@@ -840,10 +840,10 @@ class qformat_qml extends qformat_default {
          * <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
          * we only want to know the Value text to match against the users answer.
          */
-        $ansparts = explode(" ", $logicalstr);
+        $ansparts = explode(' ', $logicalstr);
 
         // This 'should' be the correct answer.
-        $anstext = str_replace('"', "", $ansparts[3]);
+        $anstext = str_replace('"', '', $ansparts[3]);
 
         return $anstext;
     }
@@ -867,7 +867,7 @@ class qformat_qml extends qformat_default {
 
         // Set the questiontext and format.
         $questiontext['text'] = $multiansdata['text'];
-        $questiontext['format'] = FORMAT_MOODLE;
+        $questiontext['format'] = FORMAT_HTML;
 
         $qo = qtype_multianswer_extract_question($questiontext);
 
@@ -880,7 +880,7 @@ class qformat_qml extends qformat_default {
         $qo->questiontext = $qo->questiontext['text'];
 
         $qo->generalfeedback = '';
-        $qo->generalfeedbackformat = FORMAT_MOODLE;
+        $qo->generalfeedbackformat = FORMAT_HTML;
         $qo->length = 1;
         $qo->penalty = 0.3333333;
 
@@ -895,20 +895,20 @@ class qformat_qml extends qformat_default {
      */
     private function build_multianswer_string($xmlquestion) {
 
-        $ignored = array("MATCHES", "NOCASE", "NEAR", "AND", "OR");
+        $ignored = array('MATCHES', 'NOCASE', 'NEAR', 'AND', 'OR');
 
         // String to hold the question name, used by the calling function.
-        $qname = "";
+        $qname = '';
 
         // The question type.
-        $qtype = ":SHORTANSWER:";
+        $qtype = ':SHORTANSWER:';
 
-        $ansconditiontext = "";
+        $ansconditiontext = '';
 
         foreach ($xmlquestion->children() as $child) {
             $nodename = $child->getName();
-            if ($nodename == "OUTCOME" && $child['ID'] != 'wrong' && $child['ID'] != 'Always happens') {
-                $condition = (string) $child->CONDITION;
+            if ($nodename == 'OUTCOME' && $child['ID'] != 'wrong' && $child['ID'] != 'Always happens') {
+                $condition = clean_param($child->CONDITION, PARAM_TEXT);
 
                 if (strpos($condition, '=')) {
                     $condition = substr($condition, 5);
@@ -919,7 +919,7 @@ class qformat_qml extends qformat_default {
         }
 
         // Question text.
-        $qtext = "";
+        $qtext = '';
 
         // Array to hold all of the parsed cloze strings.
         $clozeanswers = array();
@@ -952,17 +952,17 @@ class qformat_qml extends qformat_default {
          */
 
         // Split the string up by the space character.
-        $ansparts = explode(" ", (string) $ansconditiontext);
+        $ansparts = explode(' ', $ansconditiontext);
 
         /* Loop used to iterate the logical condition answer string and build
          * up each of the cloze answer strings.
          */
         foreach ($ansparts as $anspart) {
 
-            $text = str_replace('"', "", $anspart);
+            $text = str_replace('"', '', $anspart);
 
             // If we have a "MATCHES" in the answer condition string, we then ignore numerical answers.
-            if (strpos($ansconditiontext, "MATCHES") !== false) {
+            if (strpos($ansconditiontext, 'MATCHES') !== false) {
                 if (is_numeric($text)) {
                     continue;
                 }
@@ -988,7 +988,7 @@ class qformat_qml extends qformat_default {
             $clozequestionformat .= $qtype;
 
             // Add the correct answer text.
-            $clozequestionformat .= "=" . $text;
+            $clozequestionformat .= '=' . $text;
 
             // Store the answer value for this question.
             $qanswers[] = $text;
@@ -1008,21 +1008,21 @@ class qformat_qml extends qformat_default {
          */
         foreach ($xmlquestion->children() as $child) {
             // We only care about the answer node.
-            if ($child->getName() == "ANSWER") {
+            if ($child->getName() == 'ANSWER') {
                 foreach ($child->children() as $anschild) {
 
                     // Append the text contained in this Answer->Content node.
-                    if ($anschild->getName() == "CONTENT") {
-                        $qtext .= (string) $anschild;
-                        $qname .= (string) $anschild;
+                    if ($anschild->getName() == 'CONTENT') {
+                        $qtext .= clean_param($anschild, PARAM_RAW);
+                        $qname .= clean_param($anschild, PARAM_TEXT);
                     }
 
                     /* Append the parsed cloze string to mark the "blank"
                      * i.e. to show there is a blank that should go here
                      */
-                    if ($anschild->getName() == "CHOICE") {
-                        $qtext .= " {$clozeanswers[$answerindex]} ";
-                        $qname .= " {{$qanswers[$answerindex]}} ";
+                    if ($anschild->getName() == 'CHOICE') {
+                        $qtext .= ' {$clozeanswers[$answerindex]} ';
+                        $qname .= ' {{$qanswers[$answerindex]}} ';
                         ++$answerindex;
                     }
                 }
@@ -1044,31 +1044,31 @@ class qformat_qml extends qformat_default {
      * @return string the moodle question type string
      */
     private function get_question_type($strqtype) {
-        $mdlquestiontype = "";
+        $mdlquestiontype = '';
         switch ($strqtype) {
-            case "MR":
-            case "MC":
-                $mdlquestiontype = "multichoice";
+            case 'MR':
+            case 'MC':
+                $mdlquestiontype = 'multichoice';
                 break;
-            case "SEL":
-                $mdlquestiontype = "select";
+            case 'SEL':
+                $mdlquestiontype = 'select';
                 break;
-            case "YN":
-            case "TF":
-                $mdlquestiontype = "truefalse";
+            case 'YN':
+            case 'TF':
+                $mdlquestiontype = 'truefalse';
                 break;
-            case "FIB":
-            case "TM":
-                $mdlquestiontype = "shortanswer";
+            case 'FIB':
+            case 'TM':
+                $mdlquestiontype = 'shortanswer';
                 break;
-            case "ESSAY":
-                $mdlquestiontype = "essay";
+            case 'ESSAY':
+                $mdlquestiontype = 'essay';
                 break;
-            case "NUM":
-                $mdlquestiontype = "numerical";
+            case 'NUM':
+                $mdlquestiontype = 'numerical';
                 break;
-            case "MATCH":
-                $mdlquestiontype = "match";
+            case 'MATCH':
+                $mdlquestiontype = 'match';
                 break;
             default :
                 $mdlquestiontype = $strqtype;
