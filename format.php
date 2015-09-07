@@ -71,8 +71,8 @@ class qformat_qml extends qformat_default {
                 case 'multichoice':
                     $qo = $this->import_multichoice($xmlquestion);
                     break;
-                case 'select' :
-                    $qo = $this->import_select($xmlquestion);
+                case 'multianswer' :
+                    $qo = $this->import_multianswer($xmlquestion);
                     break;
                 case 'truefalse':
                     $qo = $this->import_truefalse($xmlquestion);
@@ -230,85 +230,79 @@ class qformat_qml extends qformat_default {
     }
 
     /**
-     * Import a single answer multiple choice type question
-     * @param array question question array from xml tree
-     * @return object question object
+     * Import a multianswer (embedded) type question.
+     *
+     * @param SimpleXMLObject $xmlquestion The XML question object
+     * @return stdClass A multianswer type question object
      */
-    public function import_select($xmlquestion) {
-        $qo = $this->import_headers($xmlquestion);
-        $qo->qtype = 'multichoice';
-        $qo->answernumbering = 'abc';
-        $qo->single = 1;
-        $qo->shuffleanswers = 0;
-        $acount = 0;
-        $ocount = 0;
-        $qo->correctfeedback = array('text' => get_string('correctfeedbackdefault', 'question'), 'format' => FORMAT_HTML);
-        $qo->partiallycorrectfeedback = array('text' => get_string('partiallycorrectfeedbackdefault', 'question'),
-            'format' => FORMAT_HTML);
-        $qo->incorrectfeedback = array('text' => get_string('incorrectfeedbackdefault', 'question'), 'format' => FORMAT_HTML);
+    private function import_multianswer($xmlquestion) {
+        question_bank::get_qtype('multianswer'); // Ensure the multianswer code is loaded.
 
-        // Used to obtain the string condition which is correct.
-        $ansconditiontextarray = explode('"', clean_param($xmlquestion->OUTCOME[0]->CONDITION, PARAM_TEXT));
-        if ($ansconditiontextarray >= 3) {
-            $correct = $ansconditiontextarray[3];
-        }
+        $stemtype = ':MULTICHOICE:';
+        $stems = $this->get_stems($xmlquestion);
+        $choices = $this->get_choices($xmlquestion);
+        $matches = $this->get_matches($xmlquestion);
 
-        // In this for loop the multiple choice questions are set and stored in a array called option and the question is also set.
-        // Also the correct value is found.
-        foreach ($xmlquestion->children() as $child) {
-            if ($child->getName() == 'ANSWER') {
-                foreach ($child->children() as $anschild) {
-                    if ($anschild->getName() == 'CHOICE') {
-                        foreach ($anschild->children() as $optionchild) {
-                            if ($optionchild->getName() == 'OPTION') {
-                                $option[$acount] = clean_param($optionchild, PARAM_TEXT);
-                                $qo->answer[$acount] = array('text' => $option[$acount], 'format' => FORMAT_HTML);
-                                $qo->fraction[$acount] = 0;
-
-                                // Finding the correct value.
-                                if ($option[$acount] == $correct) {
-                                    $qo->fraction[$acount] = 1;
-                                }
-                                $acount++;
-                            }
-                            if ($optionchild->getName() == 'CONTENT') {
-                                $qo->questiontext = clean_param($anschild->CONTENT, PARAM_RAW);
-                            }
+        // Build up the question text using Moodle cloze syntax.
+        $qtext = html_writer::div(clean_param($xmlquestion->CONTENT, PARAM_RAW));
+        $qtext .= html_writer::start_tag('ul');
+        foreach ($stems as $stemid => $stemtext) {
+            $matchfound = array();
+            $maxscore = 0;
+            $ctext = '';
+            foreach ($choices[$stemid] as $choice) {
+                foreach ($matches[$stemid] as $match) {
+                    if ($match->choice == $choice) {
+                        $matchfound[$stemid][$choice] = true;
+                        if ($match->score > 0) {
+                            $maxscore += $match->score;
+                            $ctext .= '~=' . $choice;
+                        } else {
+                            $ctext .= '~' . $choice;
+                        }
+                        // Add feedback if there is any.
+                        if ($match->feedback !== '') {
+                            $ctext .= '#' . $match->feedback;
+                        } else if ($match->score <= 0 && !empty($matches['wrong']) && $matches['wrong']->feedback !== '') {
+                            $ctext .= '#' . $matches['wrong']->feedback;
                         }
                     }
                 }
+                // Add any missing choices (with no matches).
+                if (empty($matchfound[$stemid][$choice])) {
+                    $ctext .= '~' . $choice;
+                    if (!empty($matches['wrong']) && $matches['wrong']->feedback !== '') {
+                        $ctext .= '#' . $matches['wrong']->feedback;
+                    }
+                }
             }
+            // Build the text for this sub-question.
+            $qtext .= html_writer::start_tag('li');
+            $clozetext = '{' . $maxscore . $stemtype . substr($ctext, 1) . '}';
+            // Search for a series of underscores to replace (assuming these would represent a blank).
+            if (preg_match_all('/(_{2,})/', $stemtext, $blank) === 1) {
+                $qtext .= str_replace($blank[1], $clozetext, $stemtext);
+            } else {
+                $qtext .= $stemtext . ' ' . $clozetext;
+            }
+            $qtext .= html_writer::end_tag('li');
         }
-        $qo->feedback = $this->set_feedback($xmlquestion, $option);
+        $qtext .= html_writer::end_tag('ul');
+
+        $questiontext = array();
+        $questiontext['text'] = $qtext;
+        $questiontext['format'] = FORMAT_HTML;
+        $questiontext['itemid'] = '';
+        $qo = qtype_multianswer_extract_question($questiontext);
+        $qo->questiontext = $qo->questiontext['text'];
+        $qo->questiontextformat = FORMAT_HTML;
+
+        $qo->name = trim(clean_param($xmlquestion['DESCRIPTION'], PARAM_TEXT));
+        $qo->qtype = 'multianswer';
+        $qo->generalfeedback = '';
+        $qo->generalfeedbackformat = FORMAT_HTML;
+
         return $qo;
-
-    }
-
-    /**
-     * Obtains feedback relating to the conditional choice provided and returns feedback[].
-     */
-    public function set_feedback($xmlquestion, $option) {
-        $feedback = '';
-        foreach ($xmlquestion->children() as $child) {
-            if ($child->getName() == 'OUTCOME') {
-                foreach ($child->children() as $outchild) {
-                    if ($outchild->getName() == 'CONDITION') {
-                        $outconditionarray = explode('"', clean_param($outchild, PARAM_TEXT));
-
-                    }
-                    if (count($outconditionarray) >= 3) {
-                        if ($outchild->getName() == 'CONTENT') {
-                            for ($i = 0; $i < count($option); $i++) {
-                                if ($option[$i] == $outconditionarray[3]) {
-                                    $feedback[$i] = array('text' => clean_param($outchild, PARAM_RAW), 'format' => FORMAT_HTML);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return $feedback;
     }
 
     /**
@@ -320,11 +314,13 @@ class qformat_qml extends qformat_default {
         $choices = array();
 
         foreach ($xmlquestion->ANSWER->children() as $anschild) {
-            if ($anschild->getName() == 'CHOICE' && $anschild->attributes()->ID == '0') {
+            if ($anschild->getName() == 'CHOICE') {
+                $stemid = clean_param($anschild['ID'], PARAM_TEXT);
                 foreach ($anschild->children() as $choicechild) {
                     if ($choicechild->getName() == 'OPTION') {
-                        $choice = clean_param($choicechild, PARAM_TEXT);
-                        $choices[$choice] = $choice;
+                        $choice = trim(clean_param($choicechild, PARAM_TEXT)) === ''
+                                ? '-' : trim(clean_param($choicechild, PARAM_TEXT));
+                        $choices[$stemid][$choice] = $choice;
                     }
                 }
             }
@@ -356,39 +352,68 @@ class qformat_qml extends qformat_default {
     }
 
     /**
-     * Gets the correct choice for the id of each stem (as matches[stemid] = choice).
+     * Creates an object for each stem, containing its matching choice, score and feedback.
+     *
      * @param SimpleXMLObject $xmlquestion The XML question object
-     * @param array $stemids An array of stem ids
-     * @return array An array of matched stem ids and choices
+     * @return array An array of objects, indexed by stemid
      */
-    private function get_matches($xmlquestion, $stemids) {
+    private function get_matches($xmlquestion) {
         $matches = array();
 
-        foreach ($xmlquestion->OUTCOME as $outcome) {
-            $outcomeidparts = explode(' ', $outcome['ID']);
-            $stemid = $outcomeidparts[0];
-            $conditionstring = trim(clean_param($outcome->CONDITION, PARAM_TEXT));
-            $outcomes[$stemid] = $conditionstring;
-        }
-
-        // Try to find an outcome condition for each of the stem ids.
-        foreach ($stemids as $stemid) {
-            if (array_key_exists($stemid, $outcomes)) {
-                $conditionparts = explode(' MATCHES ', $outcomes[$stemid]);
-                $choice = substr($conditionparts[1], 1, -1);
-                $matches[$stemid] = $choice;
+        // Create an array of all available outcomes.
+        foreach ($xmlquestion->OUTCOME as $outcomenode) {
+            $outcomeidparts = explode(' ', $outcomenode['ID']);
+            $outcomeid = $outcomeidparts[0];
+            $outcome = new stdClass();
+            $outcome->conditionstring = trim(clean_param($outcomenode->CONDITION, PARAM_TEXT));
+            if (!$outcome->score = clean_param($outcomenode['SCORE'], PARAM_INT)) {
+                if (!$outcome->score = clean_param($outcomenode['ADD'], PARAM_INT)) {
+                    $outcome->score = 0;
+                }
             }
+            $outcome->feedback = clean_param($outcomenode->CONTENT, PARAM_RAW);
+            $outcomes[$outcomeid] = $outcome;
         }
 
-        // Otherwise, fall back on combined outcome condition string.
-        if (empty($matches) && array_key_exists('right', $outcomes)) {
-            $conditions = explode(' AND ', $outcomes['right']);
+        // See if there's a combined outcome condition string for the correct answers.
+        if (array_key_exists('right', $outcomes)) {
+            $conditions = explode(' AND ', $outcomes['right']->conditionstring);
             foreach ($conditions as $condition) {
                 $conditionparts = explode(' MATCHES ', $condition);
                 $stemid = substr($conditionparts[0], 1, -1);
-                $choice = substr($conditionparts[1], 1, -1);
-                $matches[$stemid] = $choice;
+                $match = new stdClass();
+                $match->choice = substr($conditionparts[1], 1, -1) === '' ? '-' : substr($conditionparts[1], 1, -1);
+                $match->score = $outcomes['right']->score;
+                $match->feedback = $outcomes['right']->feedback;
+                $matches[$stemid][] = $match;
             }
+        }
+        // Otherwise, search for a separate outcome condition string for each of the stem ids.
+        else {
+            foreach ($outcomes as $outcomeid => $outcome) {
+                if (is_number($outcomeid)) {
+                    // There may still be a number of possible conditions for each stem id.
+                    $conditions = explode(' OR ', $outcome->conditionstring);
+                    foreach ($conditions as $condition) {
+                        $conditionparts = explode(' MATCHES ', $condition);
+                        if (count($conditionparts) == 2 ) {
+                            $stemid = substr($conditionparts[0], 1, -1);
+                            $match = new stdClass();
+                            $match->choice = substr($conditionparts[1], 1, -1) === '' ? '-' : substr($conditionparts[1], 1, -1);
+                            $match->score = $outcome->score;
+                            $match->feedback = $outcome->feedback;
+                            $matches[$stemid][] = $match;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Finally, see if there's any combined feedback for wrong answers.
+        if (array_key_exists('wrong', $outcomes) && $outcomes['wrong']->score == 0) {
+            $match = new stdClass();
+            $match->feedback = $outcomes['wrong']->feedback;
+            $matches['wrong'] = $match;
         }
 
         return $matches;
@@ -409,7 +434,7 @@ class qformat_qml extends qformat_default {
         $qo->questiontextformat = 0;
         $stems = $this->get_stems($xmlquestion);
         $choices = $this->get_choices($xmlquestion);
-        $matches = $this->get_matches($xmlquestion, array_keys($stems));
+        $matches = $this->get_matches($xmlquestion);
 
         // Store stems in subquestions. This is used for displaying (stored as array).
         foreach ($stems as $stemid => $stemtext) {
@@ -417,12 +442,14 @@ class qformat_qml extends qformat_default {
         }
 
         // Store choices in subanswers. This is used for the dropdown menu.
-        foreach ($matches as $stemid => $choice) {
-            $qo->subanswers[$stemid] = $choice;
-            unset($choices[$choice]);
+        foreach ($matches as $stemid => $match) {
+            if (is_number($stemid)) {
+                $qo->subanswers[$stemid] = $match[0]->choice;
+                unset($choices[0][$match[0]->choice]);
+            }
         }
         // Include any remaining wrong choices without a matching question.
-        foreach ($choices as $choice) {
+        foreach ($choices[0] as $choice) {
             $qo->subquestions[] = array('text' => '', 'format' => FORMAT_HTML);
             $qo->subanswers[] = $choice;
         }
@@ -1051,7 +1078,7 @@ class qformat_qml extends qformat_default {
                 $mdlquestiontype = 'multichoice';
                 break;
             case 'SEL':
-                $mdlquestiontype = 'select';
+                $mdlquestiontype = 'multianswer';
                 break;
             case 'YN':
             case 'TF':
