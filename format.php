@@ -771,15 +771,17 @@ class qformat_qml extends qformat_default {
 
         if (isset($ansconditiontext)) {
             if (strpos($ansconditiontext, '=') !== false) {
-                $anstext = substr($ansconditiontext, 5);
+                $anstext = array(substr($ansconditiontext, 5));
             } else {
                 $anstext = $this->break_logical_ans_str($ansconditiontext);
             }
             $feedback = $this->create_feedback_object($xmlquestion);
-            $qo->feedback[] = array('text' => $feedback->correct, 'format' => FORMAT_HTML);
             $qo->hint = array_fill(0, 2, array('text' => $feedback->incorrect, 'format' => FORMAT_HTML));
-            $qo->fraction[] = 1;
-            $qo->answer[] = trim($anstext);
+            foreach ($anstext as $answer) {
+                $qo->answer[] = trim($answer);
+                $qo->feedback[] = array('text' => $feedback->correct, 'format' => FORMAT_HTML);
+                $qo->fraction[] = 1;
+            }
         } else {
             $this->error('Shortanswer questions with no correct answer are not'
                     . ' supported in moodle');
@@ -809,13 +811,13 @@ class qformat_qml extends qformat_default {
 
         $qtext = $this->get_question_text($xmlquestion);
 
-        $anstext = $this->break_logical_ans_str(clean_param($ansconditiontext, PARAM_TEXT));
+        $anstext = $this->break_logical_ans_str($ansconditiontext);
 
         /* Currently this will only match exact answers regardless of what the
          * exported settings were.  (case-insensitive)
          * Set the value text as our correct answer.
          */
-        $qo->answer[] = $anstext;
+        $qo->answer[] = $anstext[0];
 
         /* Try to overwrite the generic question name with something more descriptive
          * Not nessesary, but a lot of the test files had generic names, this
@@ -867,10 +869,18 @@ class qformat_qml extends qformat_default {
          * <CONDITION>"0" MATCHES NOCASE "reduction" OR "0" NEAR NOCASE "reduction"</CONDITION>
          * we only want to know the Value text to match against the users answer.
          */
-        $ansparts = explode(' ', $logicalstr);
+        $anstext = array();
 
-        // This 'should' be the correct answer.
-        $anstext = str_replace('"', '', $ansparts[3]);
+        // There may be more than one possible correct answer.
+        $conditions = explode(' OR ', $logicalstr);
+        foreach ($conditions as $condition) {
+            $ansparts = explode(' ', $condition);
+
+            if ($ansparts[1] == 'MATCHES') {
+                // This 'should' be the correct answer.
+                $anstext[] = str_replace('"', '', $ansparts[3]);
+            }
+        }
 
         return $anstext;
     }
