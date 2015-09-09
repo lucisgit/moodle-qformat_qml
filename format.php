@@ -24,6 +24,10 @@
  */
 defined('MOODLE_INTERNAL') || die();
 
+define('QTYPE_MC', ':MULTICHOICE:');
+define('QTYPE_NM', ':NUMERICAL:');
+define('QTYPE_SA', ':SHORTANSWER:');
+
 class qformat_qml extends qformat_default {
 
     public function provide_import() {
@@ -171,6 +175,11 @@ class qformat_qml extends qformat_default {
      * @return object question object
      */
     public function import_numerical($xmlquestion) {
+        // If the question has more than one part, use multianswer instead.
+        if (!empty($xmlquestion->ANSWER->CHOICE[1])) {
+            return $this->import_multianswer($xmlquestion, QTYPE_NM);
+        }
+
         // Get common parts.
         $qo = $this->import_headers($xmlquestion);
 
@@ -233,43 +242,44 @@ class qformat_qml extends qformat_default {
      * Import a multianswer (embedded) type question.
      *
      * @param SimpleXMLObject $xmlquestion The XML question object
+     * @param string $qtype Embedded question type for cloze expression
      * @return stdClass A multianswer type question object
      */
-    private function import_multianswer($xmlquestion) {
+    private function import_multianswer($xmlquestion, $qtype = QTYPE_MC) {
         question_bank::get_qtype('multianswer'); // Ensure the multianswer code is loaded.
 
-        $stemtype = ':MULTICHOICE:';
-        $stems = $this->get_stems($xmlquestion);
-        $choices = $this->get_choices($xmlquestion);
-        $matches = $this->get_matches($xmlquestion);
+        $stems = $this->get_stems($xmlquestion, $qtype);
+        $matches = $this->get_matches($xmlquestion, $qtype);
+        if ($qtype == QTYPE_MC) {
+            $choices = $this->get_choices($xmlquestion);
+        }
 
         // Build up the question text using Moodle cloze syntax.
         $qtext = html_writer::div(clean_param($xmlquestion->CONTENT, PARAM_RAW));
         $qtext .= html_writer::start_tag('ul');
         foreach ($stems as $stemid => $stemtext) {
-            $matchfound = array();
             $maxscore = 0;
             $ctext = '';
-            foreach ($choices[$stemid] as $choice) {
-                foreach ($matches[$stemid] as $match) {
-                    if ($match->choice == $choice) {
-                        $matchfound[$stemid][$choice] = true;
-                        if ($match->score > 0) {
-                            $maxscore += $match->score;
-                            $ctext .= '~=' . $choice;
-                        } else {
-                            $ctext .= '~' . $choice;
-                        }
-                        // Add feedback if there is any.
-                        if ($match->feedback !== '') {
-                            $ctext .= '#' . $match->feedback;
-                        } else if ($match->score <= 0 && !empty($matches['wrong']) && $matches['wrong']->feedback !== '') {
-                            $ctext .= '#' . $matches['wrong']->feedback;
-                        }
-                    }
+            foreach ($matches[$stemid] as $match) {
+                if ($match->score > 0) {
+                    $maxscore += $match->score;
+                    $ctext .= '~=' . $match->choice;
+                } else {
+                    $ctext .= '~' . $match->choice;
                 }
-                // Add any missing choices (with no matches).
-                if (empty($matchfound[$stemid][$choice])) {
+                // Add feedback if there is any.
+                if ($match->feedback !== '') {
+                    $ctext .= '#' . $match->feedback;
+                } else if ($match->score <= 0 && !empty($matches['wrong']) && $matches['wrong']->feedback !== '') {
+                    $ctext .= '#' . $matches['wrong']->feedback;
+                }
+                if ($qtype == QTYPE_MC) {
+                    unset($choices[$stemid][$match->choice]);
+                }
+            }
+            if ($qtype == QTYPE_MC) {
+                // Add any remaining missing choices (with no matches).
+                foreach ($choices[$stemid] as $choice) {
                     $ctext .= '~' . $choice;
                     if (!empty($matches['wrong']) && $matches['wrong']->feedback !== '') {
                         $ctext .= '#' . $matches['wrong']->feedback;
@@ -278,7 +288,7 @@ class qformat_qml extends qformat_default {
             }
             // Build the text for this sub-question.
             $qtext .= html_writer::start_tag('li');
-            $clozetext = '{' . $maxscore . $stemtype . substr($ctext, 1) . '}';
+            $clozetext = '{' . $maxscore . $qtype . substr($ctext, 1) . '}';
             // Search for a series of underscores to replace (assuming these would represent a blank).
             if (preg_match_all('/(_{2,})/', $stemtext, $blank) === 1) {
                 $qtext .= str_replace($blank[1], $clozetext, $stemtext);
@@ -332,17 +342,22 @@ class qformat_qml extends qformat_default {
     /**
      * Gets the values of the stem and returns them as an array.
      * @param SimpleXMLObject $xmlquestion The XML question object
+     * @param string $qtype Embedded question type for cloze expression
      * @return array An array of stem ids with subquestion text
      */
-    private function get_stems($xmlquestion) {
+    private function get_stems($xmlquestion, $qtype = QTYPE_MC) {
         $stems = array();
 
         foreach ($xmlquestion->ANSWER->children() as $anschild) {
             if ($anschild->getName() == 'CHOICE') {
-                $stemid = clean_param($anschild['ID'], PARAM_TEXT);
-                foreach ($anschild->children() as $stemchild) {
-                    if ($stemchild->getName() == 'CONTENT') {
-                        $stems[$stemid] = clean_param($stemchild, PARAM_RAW);
+                $stemid = (int) clean_param($anschild['ID'], PARAM_TEXT);
+                if ($qtype == QTYPE_NM) {
+                    $stems[$stemid] = clean_param($xmlquestion->ANSWER->CONTENT[$stemid], PARAM_RAW);
+                } else {
+                    foreach ($anschild->children() as $stemchild) {
+                        if ($stemchild->getName() == 'CONTENT') {
+                            $stems[$stemid] = clean_param($stemchild, PARAM_RAW);
+                        }
                     }
                 }
             }
@@ -355,9 +370,10 @@ class qformat_qml extends qformat_default {
      * Creates an object for each stem, containing its matching choice, score and feedback.
      *
      * @param SimpleXMLObject $xmlquestion The XML question object
+     * @param string $qtype Embedded question type for cloze expression
      * @return array An array of objects, indexed by stemid
      */
-    private function get_matches($xmlquestion) {
+    private function get_matches($xmlquestion, $qtype = QTYPE_MC) {
         $matches = array();
 
         // Create an array of all available outcomes.
@@ -372,6 +388,12 @@ class qformat_qml extends qformat_default {
                 }
             }
             $outcome->feedback = clean_param($outcomenode->CONTENT, PARAM_RAW);
+
+            // Try to identify any catch-all 'wrong' outcome nodes with a misleading id.
+            if ($outcome->conditionstring == 'OTHER' && $outcome->score == 0) {
+                $outcomeid = 'wrong';
+            }
+
             $outcomes[$outcomeid] = $outcome;
         }
 
@@ -379,13 +401,15 @@ class qformat_qml extends qformat_default {
         if (array_key_exists('right', $outcomes)) {
             $conditions = explode(' AND ', $outcomes['right']->conditionstring);
             foreach ($conditions as $condition) {
-                $conditionparts = explode(' MATCHES ', $condition);
-                $stemid = substr($conditionparts[0], 1, -1);
-                $match = new stdClass();
-                $match->choice = substr($conditionparts[1], 1, -1) === '' ? '-' : substr($conditionparts[1], 1, -1);
-                $match->score = $outcomes['right']->score;
-                $match->feedback = $outcomes['right']->feedback;
-                $matches[$stemid][] = $match;
+                $conditionparts = ($qtype == QTYPE_NM) ? explode(' = ', $condition) : explode(' MATCHES ', $condition);
+                if (count($conditionparts) == 2 ) {
+                    $stemid = trim($conditionparts[0], '"');
+                    $match = new stdClass();
+                    $match->choice = trim($conditionparts[1], '"') === '' ? '-' : trim($conditionparts[1], '"');
+                    $match->score = $outcomes['right']->score;
+                    $match->feedback = $outcomes['right']->feedback;
+                    $matches[$stemid][] = $match;
+                }
             }
         }
         // Otherwise, search for a separate outcome condition string for each of the stem ids.
@@ -395,11 +419,11 @@ class qformat_qml extends qformat_default {
                     // There may still be a number of possible conditions for each stem id.
                     $conditions = explode(' OR ', $outcome->conditionstring);
                     foreach ($conditions as $condition) {
-                        $conditionparts = explode(' MATCHES ', $condition);
+                        $conditionparts = ($qtype == QTYPE_NM) ? explode(' = ', $condition) : explode(' MATCHES ', $condition);
                         if (count($conditionparts) == 2 ) {
-                            $stemid = substr($conditionparts[0], 1, -1);
+                            $stemid = trim($conditionparts[0], '"');
                             $match = new stdClass();
-                            $match->choice = substr($conditionparts[1], 1, -1) === '' ? '-' : substr($conditionparts[1], 1, -1);
+                            $match->choice = trim($conditionparts[1], '"') === '' ? '-' : trim($conditionparts[1], '"');
                             $match->score = $outcome->score;
                             $match->feedback = $outcome->feedback;
                             $matches[$stemid][] = $match;
@@ -938,7 +962,7 @@ class qformat_qml extends qformat_default {
         $qname = '';
 
         // The question type.
-        $qtype = ':SHORTANSWER:';
+        $qtype = QTYPE_SA;
 
         $ansconditiontext = '';
 
