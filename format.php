@@ -535,7 +535,7 @@ class qformat_qml extends qformat_default {
         }
 
         // Parse the logical answer string into an array of fractions.
-        $anscondition = $this->parse_answer_condition($ansconditiontext);
+        $anscondition = $this->parse_answer_condition($ansconditiontext, $qo->single);
 
         // Set some default values for feedback.
         $qo->correctfeedback = array('text' => get_string('correctfeedbackdefault', 'question'), 'format' => FORMAT_HTML);
@@ -628,9 +628,10 @@ class qformat_qml extends qformat_default {
     /**
      * Calculate the correct fraction for each answer
      * @param string logical string identifying the correct answer sequence
+     * @param bool $singleonly Does this question accept just one answer?
      * @return array contains the fractions for each answer
      */
-    private function parse_answer_condition($ansconditiontext) {
+    private function parse_answer_condition($ansconditiontext, $singleonly = true) {
 
         $anscount = 0;
         $anstextparts = explode(' ', $ansconditiontext);
@@ -652,8 +653,9 @@ class qformat_qml extends qformat_default {
          * Checks to see if the current text value of the condition string
          * is "NOT", if it is then a not flag is set ($last_value_not) to true
          * and when the next answer value is detected ( a string with " e.g. "0")
-         * the value for that answer is set to 0; otherwise the answer value is
-         * set to answers worth;
+         * the value for that answer is set to 0 (in the case of single-response
+         * questions); otherwise the answer value is set to answers worth (or an
+         * equivalent penalty for wrong answers to multi-response questions).
          */
         $lastvaluenot = false;
         foreach ($anstextparts as $anstextpart) {
@@ -661,7 +663,7 @@ class qformat_qml extends qformat_default {
                 $lastvaluenot = true;
             } else if (strpos($anstextpart, '"') !== false) {
                 if ($lastvaluenot) {
-                    $fractionarr[] = 0;
+                    $fractionarr[] = $singleonly ? 0 : -1;
                     $lastvaluenot = false;
                 } else {
                     $fractionarr[] = 1;
@@ -674,11 +676,11 @@ class qformat_qml extends qformat_default {
         // Calculate how much each correct answer is actually worth.
         $correctansworth = 1 / $correctanscount;
 
-        for ($cntr = 0; $cntr < count($fractionarr); $cntr++) {
-            if ($fractionarr[$cntr] == 1) {
-                $fractionarr[$cntr] = $correctansworth;
-            }
+        // For multi-response questions we need to penalise wrong answers.
+        foreach ($fractionarr as $index => $fraction) {
+            $fractionarr[$index] = $fraction * $correctansworth;
         }
+
         return $fractionarr;
     }
 
@@ -872,11 +874,11 @@ class qformat_qml extends qformat_default {
                         $qtext .= clean_param($anschild, PARAM_RAW_TRIMMED);
                     }
 
-                    /* Append a _ character instead of the answer.
+                    /* Insert a series of underscores instead of the answer.
                      * i.e. to show there is a blank that should go here.
                      */
                     if ($anschild->getName() == 'CHOICE') {
-                        $qtext .= ' _ ';
+                        $qtext .= ' _____ ';
                     }
                 }
             }
