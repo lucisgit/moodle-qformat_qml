@@ -15,14 +15,15 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Strings for component 'qformat_qml', language 'en', branch 'MOODLE_20_STABLE'
+ * Strings for component 'qformat_qml', language 'en'.
  *
  * @package    qformat_qml
  * @author     Tom McCracken <t27m@openmailbox.org>
  * @copyright  2015, Lancaster University ISS
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-$string['pluginname'] = 'Questionmark QML Importer';
-$string['pluginname_help'] = 'Imports supported Questionmark QML questions and converts them into the moodle equivalent.';
+
+$string['contenttypenotset'] = '<strong>Notice</strong>: No content type set in question header. Defaulting to HTML<br >';
+$string['pluginname'] = 'Questionmark QML format';
+$string['pluginname_help'] = 'Imports supported Questionmark QML questions and converts them into the Moodle equivalent.';
 $string['unknownquestiontype'] = 'Question type {$a} is not supported by QML import';
-$string['contenttypenotset'] = "<strong>Notice</strong>: No content type set in question header. Defaulting to HTML <br >";

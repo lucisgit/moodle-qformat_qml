@@ -30,6 +30,25 @@ define('QTYPE_SA', ':SHORTANSWER:');
 
 class qformat_qml extends qformat_default {
 
+    /** @var stdClass The admin config for the QML question format */
+    private $adminconfig;
+
+    /**
+     * Loads and caches the admin config for the QML question format.
+     *
+     * @return stdClass The plugin config
+     */
+    private function get_admin_config() {
+        global $CFG;
+
+        if ($this->adminconfig) {
+            return $this->adminconfig;
+        }
+        $this->adminconfig = get_config('qformat_qml');
+
+        return $this->adminconfig;
+    }
+
     public function provide_import() {
         return true;
     }
@@ -110,6 +129,28 @@ class qformat_qml extends qformat_default {
     }
 
     /**
+     * Parse the HTML content of a question to replace QMP server variables.
+     *
+     * @param string $content The original question content.
+     * @return string The parsed HTML with variables replaced.
+     */
+    private function parse_question_content($content) {
+        $config = $this->get_admin_config();
+
+        if (isset($config->qmpvars)) {
+            $servervars = unserialize($config->qmpvars);
+
+            // Replace the server variables in the raw HTML.
+            foreach ($servervars as $search => $replace) {
+                $content = str_replace($search, $replace, $content);
+            }
+        }
+
+        // Clean up the parsed HTML and return.
+        return clean_param($content, PARAM_RAW);
+    }
+
+    /**
      * Bootstrap a question object
      * @param SimpleXML_Object contains the question data in a SimpleXML_Object
      * @return object question object
@@ -118,7 +159,7 @@ class qformat_qml extends qformat_default {
         // Initalise question object.
         $qo = $this->defaultquestion();
 
-        $qtext = clean_param($xmlquestion->CONTENT, PARAM_RAW);
+        $qtext = $this->parse_question_content($xmlquestion->CONTENT);
         $qname = trim(clean_param($xmlquestion['DESCRIPTION'], PARAM_TEXT));
 
         if (strlen($qname) == 0) {
@@ -255,7 +296,7 @@ class qformat_qml extends qformat_default {
         }
 
         // Build up the question text using Moodle cloze syntax.
-        $qtext = html_writer::div(clean_param($xmlquestion->CONTENT, PARAM_RAW));
+        $qtext = html_writer::div($this->parse_question_content($xmlquestion->CONTENT));
         $qtext .= html_writer::start_tag('ul');
         foreach ($stems as $stemid => $stemtext) {
             $maxscore = 0;
