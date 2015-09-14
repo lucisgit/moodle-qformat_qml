@@ -1155,6 +1155,7 @@ class qformat_qml extends qformat_default {
             case 'MC':
                 $mdlquestiontype = 'multichoice';
                 break;
+            case 'MAT':
             case 'SEL':
                 $mdlquestiontype = 'multianswer';
                 break;
