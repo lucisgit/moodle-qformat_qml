@@ -519,10 +519,11 @@ class qformat_qml extends qformat_default {
             $qo->subanswers[] = $choice;
         }
 
-        // Get feedback for the overall outcome.
+        // Get default mark and 'correct' feedback for the overall outcome.
         foreach ($xmlquestion->OUTCOME as $outcome) {
             $content = clean_param($outcome->CONTENT, PARAM_RAW);
             if ($outcome['ID'] == 'right') {
+                $qo->defaultmark = clean_param($outcome['SCORE'], PARAM_TEXT);
                 $qo->correctfeedback = array('text' => $content, 'format' => FORMAT_HTML);
             }
             if ($outcome['ID'] == 'wrong') {
@@ -1172,6 +1173,7 @@ class qformat_qml extends qformat_default {
                 $mdlquestiontype = 'numerical';
                 break;
             case 'MATCH':
+            case 'RANK':
                 $mdlquestiontype = 'match';
                 break;
             default :
