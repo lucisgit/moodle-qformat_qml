@@ -231,18 +231,41 @@ class qformat_qml extends qformat_default {
         $qo->feedback = array();
         $qo->fraction = array();
 
-        $ans = substr(clean_param($xmlquestion->OUTCOME[0]->CONDITION, PARAM_TEXT), 5);
-        $qo->answer[] = $ans;
+        foreach ($xmlquestion->OUTCOME as $outcomenode) {
+            $outcomeid = clean_param($outcomenode['ID'], PARAM_TEXT);
+            $outcome = new stdClass();
+            $conditionparts = explode(' = ', trim(clean_param($outcomenode->CONDITION, PARAM_TEXT)));
+            if (count($conditionparts) == 2 ) {
+                $outcome->answer = $conditionparts[1];
+            }
+            if (!$outcome->score = clean_param($outcomenode['SCORE'], PARAM_INT)) {
+                if (!$outcome->score = clean_param($outcomenode['ADD'], PARAM_INT)) {
+                    $outcome->score = 0;
+                }
+            }
+            $outcome->feedback = array('text' => clean_param($outcomenode->CONTENT, PARAM_RAW), 'format' => FORMAT_HTML);
+            $outcomes[$outcomeid] = $outcome;
+        }
+
+        if (array_key_exists('right', $outcomes)) {
+            $qo->defaultmark = $outcomes['right']->score;
+            $qo->answer[] = $outcomes['right']->answer;
+            $qo->feedback[] = $outcomes['right']->feedback;
+            $qo->tolerance[] = 0;
+            $qo->fraction[] = 1;
+
+            if (array_key_exists('Within range', $outcomes)) {
+                $qo->answer[] = $outcomes['right']->answer;
+                $qo->feedback[] = $outcomes['Within range']->feedback;
+                $rangeparts = explode(' to ', $outcomes['Within range']->answer);
+                $qo->tolerance[] = ($rangeparts[1] - $rangeparts[0]) / 2;
+                $qo->fraction[] = $outcomes['Within range']->score / $qo->defaultmark;
+            }
+        }
 
         if (empty($qo->answer)) {
             $qo->answer = '*';
         }
-
-        $qo->feedback[] = array('text' => '', 'format' => FORMAT_HTML);
-        $qo->tolerance[] = 0;
-
-        // Deprecated?
-        $qo->fraction[] = 1;
 
         // Default moodles values are set for QML imported questions.
         $qo->unitgradingtype = 0;
@@ -419,7 +442,7 @@ class qformat_qml extends qformat_default {
 
         // Create an array of all available outcomes.
         foreach ($xmlquestion->OUTCOME as $outcomenode) {
-            $outcomeidparts = explode(' ', $outcomenode['ID']);
+            $outcomeidparts = explode(' ', clean_param($outcomenode['ID'], PARAM_TEXT));
             $outcomeid = $outcomeidparts[0];
             $outcome = new stdClass();
             $outcome->conditionstring = trim(clean_param($outcomenode->CONDITION, PARAM_TEXT));
