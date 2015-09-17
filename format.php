@@ -392,8 +392,8 @@ class qformat_qml extends qformat_default {
                 $stemid = clean_param($anschild['ID'], PARAM_TEXT);
                 foreach ($anschild->children() as $choicechild) {
                     if ($choicechild->getName() == 'OPTION') {
-                        $choice = trim(clean_param($choicechild, PARAM_TEXT)) === ''
-                                ? '-' : trim(clean_param($choicechild, PARAM_TEXT));
+                        $choice = trim(clean_param($choicechild, PARAM_TEXT)) === '' ?
+                                '-' : trim(clean_param($choicechild, PARAM_TEXT));
                         $choices[$stemid][$choice] = $choice;
                     }
                 }
@@ -475,9 +475,8 @@ class qformat_qml extends qformat_default {
                     $matches[$stemid][] = $match;
                 }
             }
-        }
-        // Otherwise, search for a separate outcome condition string for each of the stem ids.
-        else {
+        } else {
+            // Otherwise, search for a separate outcome condition string for each of the stem ids.
             foreach ($outcomes as $outcomeid => $outcome) {
                 if (is_number($outcomeid)) {
                     // There may still be a number of possible conditions for each stem id.
