@@ -590,7 +590,7 @@ class qformat_qml extends qformat_default {
         /* It is possible that $ansConditionText will be: "0" or "1", but we want a
          * condition string such as: NOT "0" AND NOT "1" AND NOT "2" AND NOT "3" AND "4"
          */
-        if (strlen($ansconditiontext) <= 3) {
+        if (strlen($ansconditiontext) <= 3 || strpos($ansconditiontext, '"QUE_') === 0) {
             $outcomes = $this->create_combined_outcomes_object($xmlquestion);
             $ansconditiontext = $outcomes->ansstring;
             $feedback = $outcomes->feedback;
@@ -649,7 +649,7 @@ class qformat_qml extends qformat_default {
         foreach ($xmlquestion->children() as $child) {
             if ($child->getName() == 'OUTCOME') {
 
-                if ($child['SCORE'] == '0' || $child['ADD'] == '-1') {
+                if ($child['SCORE'] == '0' || $child['ADD'] == '0' || $child['ADD'] == '-1') {
                     $ansstring .= 'NOT ';
                 }
 
