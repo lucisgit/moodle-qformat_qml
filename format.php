@@ -641,26 +641,35 @@ class qformat_qml extends qformat_default {
      * @return stdClass An object containing the logical answer string and feedback
      */
     private function create_combined_outcomes_object($xmlquestion) {
-
-        $ansstring = '';
+        $ansstrings = array();
         $feedback = array();
-        $acount = 0;
 
-        foreach ($xmlquestion->children() as $child) {
-            if ($child->getName() == 'OUTCOME') {
-
-                if ($child['SCORE'] == '0' || $child['ADD'] == '0' || $child['ADD'] == '-1') {
-                    $ansstring .= 'NOT ';
-                }
-
-                $ansstring .= '"' . $acount . '"' . ' ';
-                $feedback[$acount] = clean_param($child->CONTENT, PARAM_RAW);
-                ++$acount;
-            }
+        $ansids = array();
+        foreach ($xmlquestion->ANSWER->children() as $choice) {
+            $choiceid = clean_param($choice['ID'], PARAM_TEXT);
+            $ansids[$choiceid] = $choiceid;
         }
 
+        foreach ($xmlquestion->OUTCOME as $outcome) {
+            $choiceid = clean_param(trim($outcome->CONDITION, '"'), PARAM_TEXT);
+            if (in_array($choiceid, $ansids)) {
+                $negation = ($outcome['SCORE'] == '0' || $outcome['ADD'] == '0' || $outcome['ADD'] == '-1') ? 'NOT ' : '';
+                $ansstrings[$choiceid] = $negation . '"' . $choiceid . '"';
+                $feedback[$choiceid] = clean_param($outcome->CONTENT, PARAM_RAW);
+                unset($ansids[$choiceid]);
+            } else {
+                $otherfeedback = clean_param($outcome->CONTENT, PARAM_RAW);
+            }
+        }
+        // Any remaining possible answers must be wrong.
+        foreach ($ansids as $ansid) {
+            $ansstrings[$ansid] = 'NOT "' . $ansid . '"';
+            $feedback[$ansid] = !empty($otherfeedback) ? $otherfeedback : '';
+        }
+        ksort($ansstrings);
+
         $outcomes = new stdClass();
-        $outcomes->ansstring = $ansstring;
+        $outcomes->ansstring = implode(' ', $ansstrings);
         $outcomes->feedback = $feedback;
 
         return $outcomes;
