@@ -88,6 +88,9 @@ class qformat_qml extends qformat_default {
         // Iterate through simple_xml question objects.
         foreach ($sxmlref as $xmlquestion) {
             $questiontype = $this->get_question_type($xmlquestion->ANSWER['QTYPE']);
+            if (empty($questiontype)) {
+                continue;
+            }
             $qo = null;
 
             switch ($questiontype) {
